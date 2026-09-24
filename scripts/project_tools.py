@@ -18,9 +18,9 @@ def diagnose(hub):
         return sys.version.split()[0]
 
     def resources():
-        required = ['web/index.html', 'web/app.js', 'web/style.css', 'web/observatory.css',
-                    'PROTOCOL.md', 'config.example.json', 'skills/agents-talk/SKILL.md',
-                    'skills/agents-talk-plan/SKILL.md']
+        # The web allowlist in hub.py is the single source for panel assets.
+        required = ['web/' + name for name in hub.WEB_FILES] + [
+            'PROTOCOL.md', 'config.example.json', 'skills/agents-talk/SKILL.md', 'skills/agents-talk-plan/SKILL.md']
         missing = [p for p in required if not (hub.ROOT / p).is_file()]
         if missing: raise ValueError('Missing: ' + ', '.join(missing))
         return 'All required runtime resources present'
@@ -33,6 +33,11 @@ def diagnose(hub):
         for sid in sessions: hub.derive(msgs, cfg, sid)
         return {'events': len(msgs), 'sessions': len(sessions)}
 
+    def library():
+        lib, error = hub.library_read()
+        if error: raise ValueError(error)
+        return {'projects': len(lib['projects']), 'labeled_sessions': len(lib['sessions'])}
+
     def directory():
         p = hub.DATA
         while not p.exists() and p != p.parent: p = p.parent
@@ -43,6 +48,7 @@ def diagnose(hub):
     check('configuration', lambda: {'lead': hub.config()['lead']})
     check('resources', resources)
     check('data_directory', directory)
+    check('library', library)
     check('event_log', history)
     return {'ok': all(c['ok'] for c in checks), 'app_version': hub.VERSION,
             'python': sys.executable, 'root': str(hub.ROOT), 'data': str(hub.DATA),

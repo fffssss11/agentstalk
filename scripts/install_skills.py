@@ -26,14 +26,60 @@ def command_text(parts):
     return subprocess.list2cmdline(parts) if os.name == 'nt' else shlex.join(parts)
 
 
-def default_targets():
+def client_homes():
+    """Folders whose presence shows a client is set up on this computer."""
     home = Path.home()
-    targets = {'codex': Path(os.environ.get('CODEX_HOME', str(home / '.codex'))) / 'skills',
-               'claude': home / '.claude' / 'skills', 'zcode': home / '.zcode' / 'skills'}
+    homes = {'codex': Path(os.environ.get('CODEX_HOME', str(home / '.codex'))),
+             'claude': home / '.claude', 'zcode': home / '.zcode'}
     # Reasonix location is configurable. Only Windows has a verified local convention here.
     if os.name == 'nt' and os.environ.get('APPDATA'):
-        targets['reasonix'] = Path(os.environ['APPDATA']) / 'reasonix' / 'skills'
-    return targets
+        homes['reasonix'] = Path(os.environ['APPDATA']) / 'reasonix'
+    return homes
+
+
+def default_targets():
+    return {client: home / 'skills' for client, home in client_homes().items()}
+
+
+def same_path(a, b):
+    return os.path.normcase(str(Path(a).resolve())) == os.path.normcase(str(Path(b).resolve()))
+
+
+def owner(folder):
+    """(project, managed): the installer's manifest, else the Project line older installs wrote."""
+    marker = folder / MARKER
+    if marker.is_file() and not marker.is_symlink():
+        data = json.loads(marker.read_text(encoding='utf-8'))
+        return (data.get('project') if isinstance(data, dict) else None), True
+    location = folder / 'location.md'
+    if location.is_file() and not location.is_symlink():
+        for line in location.read_text(encoding='utf-8', errors='replace').splitlines():
+            if line.startswith('Project: '): return line[len('Project: '):].strip(), False
+    return None, False
+
+
+def status(project, client, target, data_dir, config_path):
+    """missing / current / outdated / other (belongs to another folder) / unmanaged, without writing."""
+    home = client_homes().get(client)
+    row = {'detected': bool(home and home.is_dir()), 'target': str(target) if target else None, 'state': 'unknown', 'project': None}
+    if not target: return row
+    folders = [target / name for name in SKILLS if (target / name).exists()]
+    if not folders:
+        row['state'] = 'missing'
+        return row
+    desired = resources(project, client, data_dir, config_path)
+    state = 'current'
+    for folder in folders:
+        folder_project, managed = owner(folder)
+        if folder_project and not same_path(folder_project, project):
+            return {**row, 'state': 'other', 'project': folder_project}
+        if not folder_project and not managed:
+            state = 'unmanaged'
+            continue
+        if any(not (folder / f).is_file() or (folder / f).read_bytes() != data for f, data in desired[folder.name].items()) and state == 'current':
+            state = 'outdated'
+    if len(folders) < len(SKILLS) and state == 'current': state = 'outdated'
+    return {**row, 'state': state, 'project': str(project) if state != 'unmanaged' else None}
 
 
 def resources(project, client, data_dir, config_path):
@@ -77,11 +123,16 @@ def install(project, client, target, data_dir, config_path, apply=False, uninsta
             raise ValueError(f'Refusing linked skill folder: {folder}')
         marker = folder / MARKER
         if marker.is_symlink(): raise ValueError(f'Refusing linked installation manifest: {marker}')
-        previous = json.loads(marker.read_text(encoding='utf-8')) if marker.exists() else None
-        if previous is not None and (not isinstance(previous, dict) or previous.get('schema') != 1 or not isinstance(previous.get('files'), dict)):
+        has_marker = marker.exists()
+        previous = json.loads(marker.read_text(encoding='utf-8')) if has_marker else None
+        if has_marker and (not isinstance(previous, dict) or previous.get('schema') != 1 or not isinstance(previous.get('files'), dict)):
             raise ValueError(f'Invalid installation manifest: {marker}')
         if previous and (previous.get('project') != str(project) or previous.get('client') != client):
             if uninstall or not replace_project: raise ValueError(f'{folder} belongs to another project/client; inspect it before --replace-project')
+        # Older installs have no manifest but name their project in location.md; never retarget them silently.
+        legacy, _ = (None, True) if has_marker else owner(folder)
+        if legacy and not same_path(legacy, project) and not uninstall and not replace_project:
+            raise ValueError(f'{folder} was installed for {legacy}; inspect it before --replace-project')
         if uninstall:
             if not previous:
                 report.append({'skill': name, 'action': 'skip_unmanaged', 'path': str(folder)})
@@ -126,6 +177,38 @@ def install(project, client, target, data_dir, config_path, apply=False, uninsta
     return report
 
 
+CLIENT_NAMES = {'codex': 'Codex', 'claude': 'Claude Code', 'reasonix': 'Reasonix', 'zcode': 'ZCode'}
+
+
+def setup(states, data_dir, config_path, targets):
+    """Terminal first run for the macOS/Linux launcher; the Windows launcher asks the same in dialogs."""
+    ready = [c for c, s in states.items() if s['detected'] and s['state'] in ('missing', 'outdated')]
+    for client, row in states.items():
+        if not row['detected']: continue
+        if row['state'] == 'other':
+            print(f'{CLIENT_NAMES[client]}：协作技能指向另一个目录 {row["project"]}，未改动。改用本目录请运行 '
+                  f'python scripts/install_skills.py --clients {client} --replace-project --apply')
+        elif row['state'] == 'unmanaged':
+            print(f'{CLIENT_NAMES[client]}：{row["target"]} 已有不由安装器管理的同名技能，未改动。')
+        elif row['state'] == 'current':
+            print(f'{CLIENT_NAMES[client]}：协作技能已是最新。')
+    if not ready: return 0
+    print('可以为这些客户端安装 agentstalk 协作技能：')
+    for client in ready: print(f'  {CLIENT_NAMES[client]} → {states[client]["target"]}')
+    if not sys.stdin.isatty() or input('现在安装吗？[y/N] ').strip().lower() not in ('y', 'yes'):
+        print('未安装。之后可运行 python scripts/install_skills.py --clients ' + ' '.join(ready) + ' --apply')
+        return 0
+    failed = 0
+    for client in ready:
+        try:
+            install(ROOT, client, targets[client], data_dir, config_path, True)
+            print(f'{CLIENT_NAMES[client]}：已安装，在该客户端的新对话中调用 agents-talk 即可接入。')
+        except (OSError, ValueError) as e:
+            failed += 1
+            print(f'{CLIENT_NAMES[client]}：安装失败：{e}')
+    return 2 if failed else 0
+
+
 def main():
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, 'reconfigure'): stream.reconfigure(encoding='utf-8', errors='backslashreplace')
@@ -137,6 +220,8 @@ def main():
     parser.add_argument('--apply', action='store_true', help='Actually write; omitted means preview only')
     parser.add_argument('--uninstall', action='store_true', help='Only remove unmodified files owned by this installation')
     parser.add_argument('--replace-project', action='store_true', help='Rebind these skill names to this project after inspecting the old installation')
+    parser.add_argument('--status', action='store_true', help='Report whether each client is set up and what is installed, as JSON; writes nothing')
+    parser.add_argument('--setup', action='store_true', help='First-run helper: show the status and, after a yes in the terminal, install for detected clients')
     args = parser.parse_args()
     try:
         targets = default_targets()
@@ -145,12 +230,19 @@ def main():
             if not sep or client not in args.clients or not path: raise ValueError('Use --target CLIENT=SKILL_ROOT for a selected client')
             targets[client] = Path(path)
         selected = list(dict.fromkeys(args.clients))
+        cfg = args.config.resolve()
+        if cfg == ROOT / 'config.json' and not cfg.exists(): cfg = ROOT / 'config.example.json'
+        if args.status or args.setup:
+            states = {c: status(ROOT, c, targets.get(c), args.data_dir.resolve(), cfg) for c in selected}
+            if args.status:
+                # ASCII JSON survives any console code page used by the Windows launcher.
+                print(json.dumps({'project': str(ROOT), 'clients': states}, indent=2))
+                return 0
+            return setup(states, args.data_dir.resolve(), cfg, targets)
         for client in selected:
             if client not in targets: raise ValueError(f'Provide --target {client}=<your skill root> on this platform')
         if len({os.path.normcase(str(targets[c].resolve())) for c in selected}) != len(selected):
             raise ValueError('Each client needs its own skill root')
-        cfg = args.config.resolve()
-        if cfg == ROOT / 'config.json' and not cfg.exists(): cfg = ROOT / 'config.example.json'
         if not args.uninstall and not cfg.is_file(): raise ValueError('Custom config file does not exist')
         # Complete validation/preview of every selected target before any write.
         reports = {c: install(ROOT, c, targets[c], args.data_dir.resolve(), cfg, False,

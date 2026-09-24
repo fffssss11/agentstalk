@@ -32,6 +32,14 @@ THREAD_LOCK = threading.RLock()
 TOKEN = secrets.token_urlsafe(32)
 MAX_UPLOAD = 32 * 1024 * 1024
 RETIRED = {'pi': {'name': 'Pi（历史成员）'}}
+# Exact static allowlist: the browser can load these files and nothing else from web/.
+WEB_FILES = {'index.html': 'text/html', 'app.css': 'text/css',
+             **{f'js/{name}.js': 'text/javascript' for name in
+                ('util', 'themes', 'state', 'sidebar', 'capture', 'stage', 'chat', 'panels', 'flow', 'settings', 'main')}}
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+       "media-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+# Window capture happens in the page itself (getDisplayMedia); every other device stays off.
+PERMISSIONS = 'display-capture=(self), camera=(), microphone=(), geolocation=()'
 
 def media_intent(text):
     """Conservative lexical backstop for clearly phrased production tasks, not a semantic classifier."""
@@ -47,8 +55,9 @@ def media_intent(text):
 
 def board_text_estimate(text):
     # Rough visible-text budget only; no tokenizer, hidden prompts, tools or media accounting.
-    non_ascii = sum(ord(c) > 127 for c in text)
-    return non_ascii + (len(text) - non_ascii + 3) // 4
+    # Count in the codec rather than iterating every character in Python on each poll.
+    ascii_count = len(text.encode('ascii', errors='ignore'))
+    return len(text) - ascii_count + (ascii_count + 3) // 4
 
 
 def token_usage(msgs, cfg):
@@ -150,6 +159,7 @@ def load():
             m = json.loads(line)
             if not isinstance(m, dict):
                 raise ValueError('message must be an object')
+            validate_event(m)
         except (ValueError, TypeError) as e:
             raise Reject(f'黑板第 {i+1} 行损坏，已停止读写以保留现场：{e}')
         m.setdefault('id', f'legacy-{i}')
@@ -158,12 +168,61 @@ def load():
         out.append(m)
     return out
 
+def validate_event(m):
+    """Check durable event shapes before consumers index or hash their fields."""
+    for key in ('type', 'from', 'ts'):
+        if not isinstance(m.get(key), str) or not m[key]: raise Reject(f'{key} 必须是非空文本')
+    for key in ('id', 'session', 'body', 'task', 'kind', 'availability', 'verdict', 'reply_to',
+                'summary', 'result', 'verification', 'blockers', 'reviewer', 'stage', 'integration_plan',
+                'mode', 'lead', 'action'):
+        if key in m and not isinstance(m[key], str): raise Reject(f'{key} 必须是文本')
+    for key in ('to', 'files', 'depends_on', 'participants'):
+        if key in m and (not isinstance(m[key], list) or any(not isinstance(v, str) for v in m[key])):
+            raise Reject(f'{key} 必须是文本列表')
+    if not isinstance(m.get('body', ''), str): raise Reject('body 必须是文本')
+    typ = m['type']
+    if typ == 'task' and (not m.get('task') or not m.get('to') or not m.get('body', '').strip()):
+        raise Reject('task 缺少任务编号、接收者或正文')
+    if typ == 'reassign' and not m.get('to'): raise Reject('reassign 缺少接收者')
+    required = {'session': ('body', 'mode', 'lead'), 'control': ('action',),
+                'review': ('task', 'verdict'), 'capability': ('kind', 'availability', 'body'),
+                'ack': ('reply_to',), 'reassign': ('task', 'to')}
+    if any(key not in m for key in required.get(typ, ())): raise Reject(f'{typ} 缺少必要字段')
+    if typ == 'instance':
+        value = m.get('instance')
+        if not isinstance(value, dict) or any(not isinstance(value.get(k), str) or not value[k] for k in ('id', 'client')):
+            raise Reject('instance 缺少有效编号或客户端')
+    if 'attachments' in m:
+        if not isinstance(m['attachments'], list) or any(not isinstance(a, dict) or
+                any(not isinstance(a.get(k), str) for k in ('id', 'name', 'mime', 'url', 'path')) for a in m['attachments']):
+            raise Reject('attachments 元数据无效')
+    if 'usage' in m:
+        value = m['usage']
+        if not isinstance(value, dict) or any(not isinstance(value.get(k), str) for k in ('id', 'provider', 'model', 'source')):
+            raise Reject('usage 来源字段无效')
+        if any(type(value.get(k)) is not int or value[k] < 0 for k in ('input', 'output')):
+            raise Reject('usage 输入输出无效')
+        if any(k in value and (type(value[k]) is not int or value[k] < 0) for k in ('cached_input', 'reasoning_output')):
+            raise Reject('usage 明细无效')
+
 def append(m):
     m = {'id': uuid.uuid4().hex, 'ts': now(), **m}
+    validate_event(m)
     with BOARD.open('ab') as f:
         f.write((json.dumps(m, ensure_ascii=False) + '\n').encode('utf-8'))
         f.flush(); os.fsync(f.fileno())
     return m
+
+def write_state_text(path, text):
+    """Replace a small state file only after its complete contents reach disk."""
+    temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+    try:
+        with temporary.open('x', encoding='utf-8') as output:
+            output.write(text)
+            output.flush(); os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 def participants(value, cfg, lead):
     if not isinstance(value, list) or not value or any(not isinstance(a, str) or a not in cfg['agents'] for a in value):
@@ -355,7 +414,7 @@ def touch(sid, aid, reading=False):
     presence = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
     presence.update(time=time.time(), ts=now())
     if reading: presence.update(read_time=time.time(), read_ts=now())
-    path.write_text(json.dumps(presence), encoding='utf-8')
+    write_state_text(path, json.dumps(presence))
 
 
 def continuation(st, aid):
@@ -375,7 +434,35 @@ def continuation(st, aid):
     elif own:
         action, instruction = 'execute', '按 task_ids 读取自己的任务摘要并执行或报告受阻；已读消息不代表任务已完成。'
     return {'action': action, 'instruction': instruction, 'task_ids': own[:30] if action == 'execute' else [],
-            'listen_argv': [sys.executable, str(ROOT / 'hub.py'), 'listen', '--agent', aid, '--session', sid, '--timeout', '50']}
+            'listen_argv': [*command_prefix(), 'listen', '--agent', aid, '--session', sid, '--timeout', '50']}
+
+
+def command_prefix():
+    actual_config = CONFIG if CONFIG.exists() or CONFIG != ROOT / 'config.json' else ROOT / 'config.example.json'
+    return [sys.executable, str(ROOT / 'hub.py'), '--data-dir', str(DATA), '--config', str(actual_config)]
+
+
+def legacy_request_matches(old, intent):
+    """Compare pre-fingerprint records with their normalized, persisted message content."""
+    expected = dict(intent)
+    if expected.get('files'): expected['files'] = [canonical_file(f) for f in expected['files']]
+    if expected['type'] == 'task' and not expected.get('kind'):
+        inferred = media_intent(expected['body'] + '\n' + expected.get('summary', ''))
+        if inferred: expected['kind'] = inferred
+    if expected['type'] == 'usage':
+        usage = {}
+        for flag, key in (('usage_id', 'id'), ('input_tokens', 'input'), ('output_tokens', 'output'),
+                          ('cached_input_tokens', 'cached_input'), ('reasoning_output_tokens', 'reasoning_output'),
+                          ('provider', 'provider'), ('model', 'model'), ('usage_source', 'source')):
+            if flag in expected:
+                value = expected.pop(flag)
+                usage[key] = value.strip() if key in ('provider', 'model', 'source') and isinstance(value, str) else value
+        expected['usage'] = usage
+        if not expected['body'] and 'input' in usage and 'output' in usage:
+            expected['body'] = f'报告本次调用 token：输入 {usage["input"]}，输出 {usage["output"]}。'
+    previous = {k: v for k, v in old.items() if k not in ('id', 'ts', '_i', 'request_id', 'request_hash')}
+    if previous.get('attachments'): previous['attachments'] = [attachment_signature(a) for a in previous['attachments']]
+    return previous == expected
 
 
 def binding_path(client_session):
@@ -407,7 +494,7 @@ def bind_client(sid, aid, client_session, detach=False):
             bound = json.loads(existing.read_text(encoding='utf-8'))
             if bound.get('session') == sid and bound.get('agent') == aid:
                 raise Reject('此实例已绑定另一原生窗口；并发窗口请创建独立实例')
-        path.write_text(json.dumps({'session': sid, 'agent': aid}), encoding='utf-8')
+        write_state_text(path, json.dumps({'session': sid, 'agent': aid}))
         return {'bound': True, 'session': sid, 'agent': aid}
 
 
@@ -552,6 +639,15 @@ def attachment(aid):
     if not p.exists(): raise Reject('附件不存在')
     return json.loads(p.read_text(encoding='utf-8'))
 
+def attachment_signature(metadata):
+    """Upload IDs change on CLI retries; stable file content defines attachment intent."""
+    aid = metadata.get('id')
+    if not isinstance(aid, str) or not re.fullmatch(r'[a-f0-9]{32}', aid): raise Reject('无效附件编号')
+    checksum = hashlib.sha256()
+    with (DATA / 'uploads' / (aid + '.bin')).open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''): checksum.update(chunk)
+    return {**{key: metadata[key] for key in ('name', 'mime', 'size')}, 'sha256': checksum.hexdigest()}
+
 def save_attachment(name, content):
     if not content or len(content) > MAX_UPLOAD: raise Reject('附件大小需介于 1 字节和 32 MB')
     name = re.split(r'[/\\]', name)[-1][:160] or 'attachment'
@@ -573,14 +669,19 @@ def save_attachment(name, content):
     return result
 
 def post(payload, human=False):
+    if not isinstance(payload, dict): raise Reject('请求必须是 JSON 对象')
     with transaction():
         cfg, msgs = config(), load()
         sid = payload.get('session')
-        if not sid: raise Reject('必须指定 --session，先用 sessions 查询会话编号')
+        if not isinstance(sid, str) or not sid: raise Reject('必须指定 --session，先用 sessions 查询会话编号')
         st = derive(msgs, cfg, sid)
         cfg = {**cfg, 'agents': st['agents']}
         who = 'human' if human else payload.get('from')
         typ = payload.get('type', 'say')
+        if not isinstance(who, str): raise Reject('发送者必须是有效实例编号')
+        if not isinstance(typ, str): raise Reject('未知消息类型')
+        for key in ('task', 'kind', 'availability', 'verdict', 'reply_to'):
+            if payload.get(key) is not None and not isinstance(payload[key], str): raise Reject(f'{key} 必须是文本')
         retired_cleanup = who in RETIRED and typ in ('unlock', 'leave', 'ack', 'usage')
         if not human and who not in cfg['agents'] and not retired_cleanup: raise Reject('未知或已停用 agent')
         if typ not in TYPES: raise Reject('未知消息类型')
@@ -595,10 +696,29 @@ def post(payload, human=False):
         body = body.strip()
         if not body and typ not in ('idle', 'unlock', 'usage'): raise Reject('请输入消息内容')
         request_id = payload.get('request_id')
-        if request_id:
-            if not re.fullmatch(r'[a-zA-Z0-9-]{1,80}', str(request_id)): raise Reject('无效请求编号')
+        request_hash = None
+        if request_id is not None:
+            if not isinstance(request_id, str) or not re.fullmatch(r'[a-zA-Z0-9-]{1,80}', request_id): raise Reject('无效请求编号')
+            fields = ('task', 'files', 'verdict', 'kind', 'availability', 'reply_to', 'attachments', 'depends_on',
+                      'summary', 'result', 'verification', 'blockers', 'reviewer', 'stage', 'integration_plan',
+                      'usage_id', 'input_tokens', 'output_tokens', 'cached_input_tokens', 'reasoning_output_tokens',
+                      'provider', 'model', 'usage_source')
+            intent = {'session': sid, 'from': who, 'type': typ, 'to': to, 'body': body,
+                      **{k: payload[k] for k in fields if payload.get(k) is not None}}
+            # CLI defaults should compare equal to the same request sent through HTTP.
+            for key in ('files', 'attachments', 'depends_on'):
+                if not intent.get(key): intent.pop(key, None)
+                elif isinstance(intent[key], str): intent[key] = intent[key].split(',')
+            if 'attachments' in intent:
+                values = intent['attachments']
+                if not isinstance(values, list) or len(values) > 8: raise Reject('最多 8 个附件')
+                intent['attachments'] = [attachment_signature(attachment(a.get('id') if isinstance(a, dict) else a)) for a in values]
+            request_hash = hashlib.sha256(json.dumps(intent, sort_keys=True).encode()).hexdigest()
             old = next((m for m in msgs if m.get('request_id') == request_id and m['session'] == sid and m.get('from') == who), None)
-            if old: return old
+            if old:
+                matches = old.get('request_hash') == request_hash or legacy_request_matches(old, intent)
+                if not matches: raise Reject('此请求编号已用于不同内容，请核对原消息；新内容使用新请求编号')
+                return old
         if not human and who not in st['session']['participants'] and typ not in ('ack', 'unlock', 'idle', 'leave', 'usage'):
             raise Reject('你未参与此会话，请让用户在面板启用后接入；可释放已有占用')
         if typ not in ('ack', 'unlock', 'idle', 'leave'):
@@ -697,7 +817,7 @@ def post(payload, human=False):
                     raise Reject(f'{field} 需要不超过 400 字符的文本，详细证据放正文')
         files = payload.get('files') or []
         if isinstance(files, str): files = files.split(',')
-        if not isinstance(files, list): raise Reject('files 必须是路径列表')
+        if not isinstance(files, list) or any(not isinstance(f, str) for f in files): raise Reject('files 必须是路径列表')
         if typ in ('lock', 'unlock', 'task', 'progress', 'done'): files = list(dict.fromkeys(canonical_file(f) for f in files))
         if typ == 'lock':
             if not files: raise Reject('lock 需要 --files')
@@ -724,7 +844,7 @@ def post(payload, human=False):
                     raise Reject('报告修改文件前需取得本任务的文件占用')
         attachments = payload.get('attachments') or []
         if not isinstance(attachments, list) or len(attachments) > 8: raise Reject('最多 8 个附件')
-        attachments = [attachment(a['id'] if isinstance(a, dict) else a) for a in attachments]
+        attachments = [attachment(a.get('id') if isinstance(a, dict) else a) for a in attachments]
         if typ == 'task' and kind == 'image_edit' and not any(a['mime'].startswith('image/') for a in attachments):
             raise Reject('图像编辑任务需要附上参考图片')
         m = {'session': sid, 'from': who, 'to': to, 'type': typ, 'body': body}
@@ -756,6 +876,7 @@ def post(payload, human=False):
         if typ == 'task' and kind: m['kind'] = kind
         if typ == 'task' and deps: m['depends_on'] = deps
         if attachments: m['attachments'] = attachments
+        if request_hash: m['request_hash'] = request_hash
         result = append(m)
         if not human and who in cfg['agents']: touch(sid, who)
         return result
@@ -783,10 +904,21 @@ def session_action(data):
             if mode not in ('leader', 'roundtable'): raise Reject('无效模式')
             shared = data.get('shared_context', cfg.get('shared_context', False))
             if type(shared) is not bool: raise Reject('全局协作上下文必须为布尔值')
-            members = participants(data.get('participants', cfg.get('participants', ['claude', 'codex', 'reasonix'])), cfg, cfg['lead'])
+            lead = data.get('lead', cfg['lead'])
+            if lead not in cfg['agents']: raise Reject('新会话的主导成员需要是默认实例')
+            default_members = list(dict.fromkeys([*cfg.get('participants', ['claude', 'codex', 'reasonix']), lead]))
+            members = participants(data.get('participants', default_members), cfg, lead)
+            project, lib = data.get('project'), None
+            if project not in (None, ''):
+                lib, error = library_read()
+                if error: raise Reject(error)
+                if project not in lib['projects']: raise Reject('项目不存在，请刷新后重试')
             sid = uuid.uuid4().hex[:12]
             emit({'session': sid, 'from': 'human', 'to': ['all'], 'type': 'session',
-                    'body': title, 'mode': mode, 'lead': cfg['lead'], 'shared_context': shared, 'participants': members})
+                    'body': title, 'mode': mode, 'lead': lead, 'shared_context': shared, 'participants': members})
+            if lib is not None:
+                lib['sessions'][sid] = {'project': project}
+                library_write(lib)
             return {'session': sid}
         sid = data.get('session')
         st = derive(msgs, cfg, sid)
@@ -854,12 +986,154 @@ def session_action(data):
         else: raise Reject('未知会话操作')
         return {'session': sid}
 
+LIBRARY_COLORS = ('green', 'teal', 'blue', 'violet', 'amber', 'rose', 'slate')
+
+
+def library_read():
+    """Projects and session labels are human UI metadata, kept outside the agent event log."""
+    path = DATA / '.library.json'
+    empty = {'version': 1, 'projects': {}, 'sessions': {}, 'requests': {}}
+    if not path.exists():
+        return empty, None
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(data, dict) or not all(isinstance(data.get(k), dict) for k in ('projects', 'sessions')):
+            raise ValueError('结构无效')
+        data.setdefault('requests', {})
+        return data, None
+    except (OSError, ValueError) as e:
+        # Keep the board usable; writes stay refused so the damaged file is preserved.
+        return empty, f'会话目录文件 .library.json 无法读取（{e}），项目与会话整理已暂停写入'
+
+
+def library_text(value, limit, label, required=False):
+    if not isinstance(value, str) or len(value.strip()) > limit or any(ord(c) < 32 and c not in '\n\t' for c in value):
+        raise Reject(f'{label}需要不超过 {limit} 字符的文本')
+    value = value.strip()
+    if required and not value: raise Reject(f'请输入{label}')
+    return value
+
+
+def project_defaults(value, cfg):
+    if value in (None, {}): return {}
+    if not isinstance(value, dict) or set(value) - {'mode', 'lead', 'participants', 'shared_context'}:
+        raise Reject('项目默认设置无效')
+    result = {}
+    if 'mode' in value:
+        if value['mode'] not in ('leader', 'roundtable'): raise Reject('项目默认模式无效')
+        result['mode'] = value['mode']
+    lead = value.get('lead', cfg['lead'])
+    if lead not in cfg['agents']: raise Reject('项目默认主导需要是默认实例')
+    if 'lead' in value: result['lead'] = lead
+    if 'participants' in value: result['participants'] = participants(value['participants'], cfg, lead)
+    if 'shared_context' in value:
+        if type(value['shared_context']) is not bool: raise Reject('全局协作上下文必须为布尔值')
+        result['shared_context'] = value['shared_context']
+    return result
+
+
+def library_apply(lib, data, cfg, known):
+    """Mutate the library in memory; callers hold the board transaction and persist the result."""
+    action = data.get('action')
+    projects, labels = lib['projects'], lib['sessions']
+    if action == 'project_create':
+        color = data.get('color', 'green')
+        if color not in LIBRARY_COLORS: raise Reject('项目颜色无效')
+        if len(projects) >= 200: raise Reject('项目数量已达上限 200')
+        pid = 'p-' + uuid.uuid4().hex[:10]
+        projects[pid] = {'id': pid, 'name': library_text(data.get('name'), 60, '项目名称', True), 'color': color,
+                         'description': library_text(data.get('description', ''), 400, '项目说明'),
+                         'defaults': project_defaults(data.get('defaults'), cfg), 'created': now(), 'updated': now()}
+        return {'project': pid}
+    if action in ('project_update', 'project_delete'):
+        pid = data.get('project')
+        if pid not in projects: raise Reject('项目不存在，请刷新后重试')
+        if action == 'project_delete':
+            # Sessions keep their history and become standalone again.
+            del projects[pid]
+            for sid in [s for s, meta in labels.items() if meta.get('project') == pid]:
+                labels[sid].pop('project')
+                if not labels[sid]: del labels[sid]
+            return {'project': pid, 'deleted': True}
+        project = projects[pid]
+        if 'name' in data: project['name'] = library_text(data['name'], 60, '项目名称', True)
+        if 'description' in data: project['description'] = library_text(data['description'], 400, '项目说明')
+        if 'color' in data:
+            if data['color'] not in LIBRARY_COLORS: raise Reject('项目颜色无效')
+            project['color'] = data['color']
+        if 'defaults' in data: project['defaults'] = project_defaults(data['defaults'], cfg)
+        project['updated'] = now()
+        return {'project': pid}
+    if action == 'session_update':
+        sid = data.get('session')
+        if sid not in known: raise Reject('会话不存在')
+        meta = dict(labels.get(sid, {}))
+        if 'title' in data:
+            title = library_text(data['title'], 120, '会话名称')
+            if title and title != known[sid]['title']: meta['title'] = title
+            else: meta.pop('title', None)
+        if 'project' in data:
+            pid = data['project']
+            if pid in (None, ''): meta.pop('project', None)
+            elif pid in projects: meta['project'] = pid
+            else: raise Reject('项目不存在，请刷新后重试')
+        for flag in ('pinned', 'archived'):
+            if flag in data:
+                if type(data[flag]) is not bool: raise Reject(f'{flag} 必须为布尔值')
+                if data[flag]: meta[flag] = True
+                else: meta.pop(flag, None)
+        if meta: labels[sid] = meta
+        else: labels.pop(sid, None)
+        return {'session': sid}
+    raise Reject('未知目录操作')
+
+
+def library_write(lib):
+    requests = lib.get('requests', {})
+    if len(requests) > 200:
+        lib['requests'] = dict(list(requests.items())[-200:])
+    write_state_text(DATA / '.library.json', json.dumps(lib, ensure_ascii=False, indent=1))
+
+
+def library_action(data):
+    with transaction():
+        cfg, msgs = config(), load()
+        lib, error = library_read()
+        if error: raise Reject(error)
+        request_id = data.get('request_id')
+        request_hash = None
+        if request_id is not None:
+            if not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9-]{1,80}', request_id): raise Reject('无效请求编号')
+            request_hash = hashlib.sha256(json.dumps({k: v for k, v in data.items() if k != 'request_id'}, sort_keys=True).encode()).hexdigest()
+            previous = lib['requests'].get(request_id)
+            if previous:
+                if previous.get('hash') != request_hash: raise Reject('此请求编号已用于不同操作，请刷新并核对状态')
+                return previous['result']
+        result = library_apply(lib, data, cfg, sessions(msgs, cfg))
+        if request_id is not None: lib['requests'][request_id] = {'hash': request_hash, 'result': result}
+        library_write(lib)
+        return result
+
+
 def read_state(sid=None, limit=300):
     with transaction():
         cfg, msgs = config(), load()
         ss = sessions(msgs, cfg)
         sid = sid or list(ss)[-1]
         st = derive(msgs, cfg, sid)
+        lib, library_error = library_read()
+        st['library'] = {'projects': sorted(lib['projects'].values(), key=lambda p: p.get('created', '')),
+                         'sessions': {k: v for k, v in lib['sessions'].items() if k in ss}}
+        if library_error: st['library_error'] = library_error
+        # Sidebar grouping needs per-session activity without deriving every session.
+        activity = {}
+        for m in msgs:
+            item = activity.setdefault(m['session'], {'created': m['ts'], 'updated': m['ts'], 'messages': 0})
+            item['updated'] = m['ts']; item['messages'] += 1
+        st['session_activity'] = activity
+        st['session_defaults'] = {'lead': cfg['lead'], 'mode': cfg.get('mode', 'leader'),
+                                  'participants': list(cfg.get('participants', ['claude', 'codex', 'reasonix'])),
+                                  'shared_context': cfg.get('shared_context', False)}
         st['receipts'] = {}
         for m in st['messages']:
             if m['type'] == 'ack':
@@ -922,9 +1196,7 @@ class Handler(BaseHTTPRequestHandler):
                 instructions = {}
                 import shlex
                 import subprocess
-                command = [sys.executable, str(ROOT / 'hub.py'), '--data-dir', str(DATA)]
-                actual_config = CONFIG if CONFIG.exists() or CONFIG != ROOT / 'config.json' else ROOT / 'config.example.json'
-                command.extend(['--config', str(actual_config)])
+                command = command_prefix()
                 prefix = subprocess.list2cmdline(command) if os.name == 'nt' else shlex.join(command)
                 for aid, actor in state['agents'].items():
                     client = actor['client']
@@ -948,17 +1220,16 @@ class Handler(BaseHTTPRequestHandler):
                 else: self.send(200, st)
             elif path == '/guide':
                 txt = '\n\n'.join((ROOT / f).read_text(encoding='utf-8') for f in ('README.md', 'PROTOCOL.md'))
-                page = '<!doctype html><meta charset="utf-8"><title>Agents Talk 使用说明</title><link rel="stylesheet" href="/style.css"><main class="guide"><a href="/">返回面板</a><pre>' + html.escape(txt) + '</pre></main>'
-                self.send(200, page.encode('utf-8'), 'text/html; charset=utf-8')
+                page = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Agents Talk 使用说明</title><link rel="stylesheet" href="/app.css"><main class="guide"><a href="/">返回面板</a><pre>' + html.escape(txt) + '</pre></main>'
+                self.send(200, page.encode('utf-8'), 'text/html; charset=utf-8', {'Content-Security-Policy': CSP})
             elif path.startswith('/media/'):
                 a = attachment(path.split('/')[-1]); content = (DATA / 'uploads' / (a['id'] + '.bin')).read_bytes()
                 headers = {} if a['mime'] != 'application/octet-stream' else {'Content-Disposition': 'attachment; filename="attachment.bin"'}
                 self.send(200, content, a['mime'], headers)
-            elif path in ('/', '/index.html', '/style.css', '/observatory.css', '/app.js'):
+            elif path == '/' or path[1:] in WEB_FILES:
                 name = 'index.html' if path == '/' else path[1:]
-                mime = {'index.html': 'text/html', 'style.css': 'text/css', 'observatory.css': 'text/css', 'app.js': 'text/javascript'}[name]
-                self.send(200, (ROOT / 'web' / name).read_bytes(), mime + '; charset=utf-8',
-                          {'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
+                self.send(200, (ROOT / 'web' / name).read_bytes(), WEB_FILES[name] + '; charset=utf-8',
+                          {'Content-Security-Policy': CSP, 'Permissions-Policy': PERMISSIONS})
             else: self.send(404, {'error': 'not found'})
         except (Reject, ValueError) as e: self.send(400, {'error': str(e)})
         except OSError as e: self.send(500, {'error': '本地文件读取失败：' + str(e)})
@@ -980,6 +1251,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(data, dict): raise Reject('请求必须是 JSON 对象')
                 if url.path == '/api/post': result = post(data, human=True)
                 elif url.path == '/api/session': result = session_action(data)
+                elif url.path == '/api/library': result = library_action(data)
                 else: self.send(404, {'error': 'not found'}); return
             self.send(200, result)
         except (Reject, ValueError, TypeError, AttributeError) as e: self.send(400, {'error': str(e)})
@@ -1007,6 +1279,7 @@ def main():
     p.add_argument('--attach', action='append', default=[], help='附加本地文件，可重复，单个最大 32 MB')
     for name in ('read', 'wait', 'listen', 'status', 'tasks', 'sessions'):
         p = sub.add_parser(name)
+        if name == 'status': p.add_argument('--human', action='store_true', help='人工终端全局视图，不接入 agent 或更新心跳')
         p.add_argument('--session'); p.add_argument('--agent'); p.add_argument('--task')
         p.add_argument('--tail', type=int, default=0, help='仅显示末尾 N 条；不会推进 wait 游标')
         p.add_argument('--since', type=int, default=-1)
@@ -1079,6 +1352,10 @@ def main():
             result = post(data)
         else:
             waiting = args.cmd in ('wait', 'listen')
+            human_status = args.cmd == 'status' and args.human
+            if human_status and args.agent: raise Reject('人工 status --human 不可与 --agent 同用')
+            if args.cmd in ('read', 'status', 'tasks') and not args.agent and not human_status:
+                raise Reject('read/status/tasks 需要 --agent 指定自己的实例身份')
             if waiting and (not args.agent or not args.session): raise Reject('wait/listen 需要 --agent 和 --session')
             if waiting and (args.task or args.message or args.since != -1 or args.context_since != -1):
                 raise Reject('wait 使用专属游标；定向或增量查询请用 read，避免跳过未读消息')
@@ -1115,7 +1392,7 @@ def main():
                             full=args.full, message_id=args.message, feed=feed)
                         if waiting:
                             result['context']['unread_remaining'] = len(unread) - len(feed)
-                            if feed: cursor.write_text(str(feed[-1]['_i']))
+                            if feed: write_state_text(cursor, str(feed[-1]['_i']))
                         else:
                             feed = result['messages']
                         if args.cmd in ('tasks', 'status'): result.pop('messages')

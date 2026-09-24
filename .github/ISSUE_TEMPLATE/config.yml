@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Private security report / 私密漏洞报告
-    url: https://github.com/fffssss11/agents-talk/security/advisories/new
+    url: https://github.com/fffssss11/agentstalk/security/advisories/new
     about: Please do not disclose vulnerabilities or private data in public issues.

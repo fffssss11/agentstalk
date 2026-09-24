@@ -159,7 +159,7 @@ class DistributionTests(unittest.TestCase):
             self.assertFalse(any((b'PRIVATE' + b'_SENTINEL') in z.read(n) for n in names))
             manifest = json.loads(z.read(next(n for n in names if n.endswith('SOURCE-MANIFEST.json'))))
             for row in manifest['files']:
-                self.assertEqual(hashlib.sha256(z.read('agents-talk-' + manifest['version'] + '/' + row['path'])).hexdigest(), row['sha256'])
+                self.assertEqual(hashlib.sha256(z.read(release.ARCHIVE_NAME + '-' + manifest['version'] + '/' + row['path'])).hexdigest(), row['sha256'])
         with self.assertRaises(ValueError): release.build(self.project, a, True)
 
     def test_release_blocks_private_paths_and_suspicious_credentials(self):
@@ -180,6 +180,34 @@ class DistributionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'No LICENSE'): release.build(self.project)
         self.assertEqual(release.build(self.project, allow_unlicensed=True)['license_status'], 'pending_owner_choice')
 
+    def test_release_blocks_runtime_names_regardless_of_case(self):
+        manifest = self.project / 'release-files.json'
+        original = json.loads(manifest.read_text(encoding='utf-8'))
+        for name in ('Config.JSON', 'WORKSPACE/private.txt', '.ENV.production', 'scripts/PYTHON-PATH.TXT'):
+            with self.subTest(name=name):
+                path = self.project / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('private fixture', encoding='utf-8')
+                manifest.write_text(json.dumps([*original, name]), encoding='utf-8')
+                with self.assertRaisesRegex(ValueError, 'Private/runtime'):
+                    release.inventory(self.project)
+
+    def test_release_blocks_fine_grained_github_credentials(self):
+        (self.project / 'README.md').write_text('github_' + 'pat_' + 'A' * 40, encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'credential'):
+            release.inventory(self.project)
+
+    def test_release_rejects_generated_manifest_and_case_collisions(self):
+        manifest = self.project / 'release-files.json'
+        original = json.loads(manifest.read_text(encoding='utf-8'))
+        (self.project / 'SOURCE-MANIFEST.json').write_text('{}', encoding='utf-8')
+        manifest.write_text(json.dumps([*original, 'SOURCE-MANIFEST.json']), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'generated manifest'):
+            release.inventory(self.project)
+        manifest.write_text(json.dumps([*original, 'readme.md']), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'case-insensitive'):
+            release.inventory(self.project)
+
     def test_release_rejects_inconsistent_license_metadata(self):
         lock = self.project / 'package-lock.json'
         data = json.loads(lock.read_text(encoding='utf-8'))
@@ -198,10 +226,13 @@ class DistributionTests(unittest.TestCase):
         self.install('--apply')
         folder = self.base / 'codex skills/agents-talk'
         before = (folder / 'SKILL.md').read_bytes()
-        (folder / '.agents-talk-install.json').write_text('[]', encoding='utf-8')
-        self.install('--apply', expected=2)
-        self.install('--uninstall', '--apply', expected=2)
-        self.assertEqual((folder / 'SKILL.md').read_bytes(), before)
+        for invalid in ('[]', 'null'):
+            with self.subTest(manifest=invalid):
+                (folder / '.agents-talk-install.json').write_text(invalid, encoding='utf-8')
+                self.install('--apply', expected=2)
+                self.install('--uninstall', '--apply', expected=2)
+                self.assertEqual((folder / 'SKILL.md').read_bytes(), before)
+                self.assertEqual((folder / '.agents-talk-install.json').read_text(encoding='utf-8'), invalid)
 
     def test_release_rejects_symlink_source(self):
         link = self.project / 'linked.txt'
@@ -272,7 +303,7 @@ class DistributionTests(unittest.TestCase):
         result = release.build(self.project, archive, True)
         destination = self.base / 'extracted copy'
         with zipfile.ZipFile(archive) as z: z.extractall(destination)
-        self.project = destination / ('agents-talk-' + result['version'])
+        self.project = destination / (release.ARCHIVE_NAME + '-' + result['version'])
         self.assertTrue(json.loads(self.run_cli('doctor').stdout)['ok'])
         base = self.start_fresh()
         with urllib.request.urlopen(base + '/api/state') as r: state = json.load(r)
@@ -321,6 +352,37 @@ class DistributionTests(unittest.TestCase):
                                 capture_output=True, encoding='utf-8', timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(Path(result.stdout.strip()).resolve(), Path(sys.executable).resolve())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows background launcher')
+    def test_windows_relative_data_and_config_use_callers_directory(self):
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
+        config = self.base / 'custom config.json'
+        config.write_bytes((self.project / 'config.example.json').read_bytes())
+        env = {**self.env, 'AGENTS_TALK_DATA': 'relative state' + os.sep, 'AGENTS_TALK_CONFIG': config.name}
+        log = self.base / 'relative-launch.log'
+        def ps(script):
+            arguments = ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                         str(self.project / 'scripts' / script), '-Port', str(port)]
+            if script == 'launch.ps1': arguments.append('-NoOpen')
+            with log.open('wb') as output:
+                return subprocess.run(arguments, cwd=self.base, env=env, stdout=output, stderr=output, timeout=90)
+        try:
+            result = ps('launch.ps1')
+            self.assertEqual(result.returncode, 0, log.read_text(encoding='utf-8', errors='replace'))
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/health', timeout=5) as response:
+                health = json.load(response)
+            self.assertEqual(Path(health['data']), self.base / 'relative state')
+            self.assertEqual(Path(health['config']), config)
+            # Another configuration may share the data directory; stop must respect it.
+            env['AGENTS_TALK_CONFIG'] = 'other config.json'
+            result = ps('stop.ps1')
+            self.assertNotEqual(result.returncode, 0, 'Mismatched configuration stopped the service')
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/health', timeout=5) as response:
+                self.assertEqual(json.load(response)['status'], 'ok')
+        finally:
+            env['AGENTS_TALK_CONFIG'] = config.name
+            ps('stop.ps1')
 
 
 if __name__ == '__main__':

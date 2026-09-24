@@ -1,0 +1,81 @@
+name: Release
+# Pushing a tag like v0.2.0 runs every gate and prepares a draft release for a maintainer to review.
+# Nothing is published automatically.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    outputs:
+      sha256: ${{ steps.build.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Tag names the checked-in version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: test "$TAG" = "v$(cat VERSION)" || { echo "::error::Tag $TAG does not match VERSION $(cat VERSION)"; exit 1; }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: python scripts/maintain.py check --browser
+      - id: build
+        name: Build and verify a clean copy
+        run: |
+          VERSION=$(cat VERSION)
+          python scripts/maintain.py build --output-dir release-assets
+          python scripts/maintain.py verify "release-assets/agentstalk-$VERSION.zip"
+          echo "sha256=$(sha256sum "release-assets/agentstalk-$VERSION.zip" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: release-browser-diagnostics
+          path: .runtime/*qa.png
+          retention-days: 7
+  publish:
+    needs: verify
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      # Builds are byte-reproducible, so this job never runs tests or npm with a write token.
+      - name: Rebuild the verified archive
+        env:
+          EXPECTED: ${{ needs.verify.outputs.sha256 }}
+        run: |
+          VERSION=$(cat VERSION)
+          python scripts/maintain.py build --output-dir release-assets
+          ACTUAL=$(sha256sum "release-assets/agentstalk-$VERSION.zip" | cut -d' ' -f1)
+          test "$ACTUAL" = "$EXPECTED" || { echo "::error::Rebuilt archive differs from the verified one"; exit 1; }
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION=$(cat VERSION)
+          FLAGS=(--draft --verify-tag --title "Agents Talk $VERSION" --notes-file release-assets/RELEASE-NOTES.md)
+          if [[ "$VERSION" == *-* ]]; then FLAGS+=(--prerelease); fi
+          gh release create "$TAG" "release-assets/agentstalk-$VERSION.zip" "release-assets/agentstalk-$VERSION.zip.sha256" \
+            release-assets/SHA256SUMS.txt "${FLAGS[@]}"

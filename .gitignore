@@ -6,6 +6,7 @@
 /.presence/
 /.listeners/
 /.bindings/
+/.library.json
 /uploads/
 /workspace/
 /.runtime/

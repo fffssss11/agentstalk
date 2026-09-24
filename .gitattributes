@@ -8,7 +8,9 @@
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
 *.vbs text eol=crlf
+*.sh text eol=lf
 *.png binary
+*.ico binary
 *.zip binary
 *.pptx binary
 *.pdf binary

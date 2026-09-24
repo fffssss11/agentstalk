@@ -1,6 +1,6 @@
 # 宣传视频
 
-[观看或下载 MP4](https://github.com/fffssss11/agents-talk/releases/download/v0.1.0-rc.3/Agents-Talk-Promo-1080p60.mp4)
+[观看或下载 MP4](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Promo-1080p60.mp4)
 
 54 秒，1920×1080，60 fps，H.264 视频与 AAC 立体声。文字直接呈现在画面中，无旁白。原创合成配乐带淡入淡出，未使用外部歌曲或声音采样。
 

@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from test_hub import hub, ROOT
 
 
@@ -121,6 +122,36 @@ class ContinuationTests(unittest.TestCase):
         self.cli('bind', '--agent', 'reasonix', '--session', 'main', '--client-session', 'fixture', code=2)
         self.cli('listen', '--agent', 'reasonix', '--session', 'main', '--task', 'wrong', code=2)
         self.cli('listen', '--session', 'main', code=2)
+
+    def test_continuation_preserves_explicit_runtime_locations(self):
+        custom_config = hub.DATA / 'custom config.json'
+        custom_config.write_text((ROOT / 'config.example.json').read_text(encoding='utf-8'), encoding='utf-8')
+        result = self.cli('--data-dir', str(hub.DATA), '--config', str(custom_config),
+                          'read', '--agent', 'reasonix', '--session', 'main')
+        command = result['continuation']['listen_argv']
+        self.assertEqual(command[command.index('--data-dir') + 1], str(hub.DATA))
+        self.assertEqual(command[command.index('--config') + 1], str(custom_config))
+        self.post('claude', 'say', body='isolated continuation message')
+        resumed = subprocess.run(command, env={**self.env, 'AGENTS_TALK_DATA':str(hub.DATA / 'wrong-board')},
+                                 capture_output=True, text=True, encoding='utf-8', timeout=8)
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertEqual(json.loads(resumed.stdout)['messages'][-1]['body'], 'isolated continuation message')
+
+    def test_presence_replace_failure_preserves_valid_previous_state(self):
+        hub.touch('main', 'reasonix', reading=True)
+        path = hub.DATA / '.presence/main.reasonix.json'
+        before = path.read_bytes()
+        def fail_replace(source, destination):
+            self.assertEqual(Path(destination), path)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertIn('read_time', json.loads(Path(source).read_text(encoding='utf-8')))
+            raise OSError('isolated replacement failure')
+        with mock.patch.object(hub.os, 'replace', side_effect=fail_replace):
+            with self.assertRaisesRegex(OSError, 'isolated replacement failure'):
+                hub.touch('main', 'reasonix', reading=True)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(list(path.parent.glob('*.tmp')), [])
+        self.assertTrue(self.state()['agents']['reasonix']['online'])
 
 
 if __name__ == '__main__':

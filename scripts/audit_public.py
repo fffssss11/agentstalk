@@ -42,21 +42,31 @@ def inspect_artifact(path):
     data = path.read_bytes()
     if path.suffix.lower() in ('.zip', '.pptx'):
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            for name in archive.namelist():
-                if name.endswith('/'): continue
+            seen = set()
+            for member in archive.infolist():
+                name = member.filename
+                issues = []
                 if name.startswith('/') or '..' in PurePosixPath(name).parts or '\\' in name or ':' in name:
-                    findings.append({'part': name, 'issues': ['unsafe-archive-path']})
-                if name.endswith(('.xml', '.rels', '.md', '.py', '.js', '.cjs', '.json', '.ps1', '.txt', '.yml', '.html', '.css', '.svg')):
-                    text = archive.read(name).decode('utf-8-sig')
-                    issues = text_issues(text)
-                    if name.endswith('.rels'):
+                    issues.append('unsafe-archive-path')
+                key = name.rstrip('/').casefold()
+                if key in seen: issues.append('duplicate-archive-path')
+                seen.add(key)
+                if member.is_dir():
+                    if issues: findings.append({'part': name, 'issues': sorted(set(issues))})
+                    continue
+                suffix = PurePosixPath(name).suffix.lower()
+                if suffix in ('.xml', '.rels', '.md', '.py', '.js', '.cjs', '.json', '.ps1', '.txt', '.yml', '.yaml', '.html', '.css', '.svg', '.cmd', '.vbs', '.sh') or PurePosixPath(name).name.upper() in ('LICENSE', 'NOTICE', 'VERSION', 'COPYING', '.GITIGNORE', '.GITATTRIBUTES'):
+                    # ZipInfo preserves each entry when duplicate names are present.
+                    text = archive.read(member).decode('utf-8-sig')
+                    issues.extend(text_issues(text))
+                    if suffix == '.rels':
                         tree = ET.fromstring(text)
                         for relationship in tree:
                             if relationship.get('TargetMode') == 'External' and not relationship.get('Target', '').startswith('https://'):
                                 issues.append('non-https-external-relationship')
-                    if issues: findings.append({'part': name, 'issues': sorted(set(issues))})
-                if path.suffix.lower() == '.pptx' and ('/embeddings/' in name or name.endswith('vbaProject.bin')):
-                    findings.append({'part': name, 'issues': ['embedded-file-or-macro']})
+                if path.suffix.lower() == '.pptx' and ('/embeddings/' in name.lower() or name.lower().endswith('vbaproject.bin')):
+                    issues.append('embedded-file-or-macro')
+                if issues: findings.append({'part': name, 'issues': sorted(set(issues))})
     elif path.suffix.lower() == '.pdf':
         # Binary image/compressed streams can coincidentally resemble credentials.
         # Only inspect the exposed PDF syntax here; use a PDF parser and visual
@@ -79,7 +89,7 @@ def audit_source(root, tracked=False):
     files = inventory(root)
     findings = []
     for name, data in files.items():
-        if Path(name).suffix in ('.png', '.jpg'): continue
+        if Path(name).suffix.lower() in ('.png', '.jpg', '.ico'): continue
         issues = text_issues(data.decode('utf-8-sig'))
         if issues: findings.append({'file': name, 'issues': issues})
     if tracked:

@@ -1,138 +1,495 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="mint" data-theme-type="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#192c26">
-  <title>Agents Talk · 协作工作室</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%2324785c'/%3E%3Cpath d='M11 13h18v12H18l-7 5V13Z' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/observatory.css">
-  <script src="/app.js" defer></script>
+  <meta name="theme-color" content="#f2f6f2">
+  <title>Agents Talk · 协作工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%231f7a55'/%3E%3Cpath d='M11 12h18v12H18l-7 5V12Z' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/js/util.js" defer></script>
+  <script src="/js/themes.js" defer></script>
+  <script src="/js/state.js" defer></script>
+  <script src="/js/sidebar.js" defer></script>
+  <script src="/js/capture.js" defer></script>
+  <script src="/js/stage.js" defer></script>
+  <script src="/js/chat.js" defer></script>
+  <script src="/js/panels.js" defer></script>
+  <script src="/js/flow.js" defer></script>
+  <script src="/js/settings.js" defer></script>
+  <script src="/js/main.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#conversation">跳到对话</a>
-  <div class="app-shell">
-    <aside class="sidebar" id="sidebar" aria-label="工作室导航">
-      <a class="brand" href="/" aria-label="Agents Talk 首页">
-        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M6 7h20v15H14l-8 5V7Z"/><path d="M11 12h10M11 17h6"/></svg></span>
-        <span>Agents Talk<small>本地多智能体工作室</small></span>
-      </a>
-      <button id="new-session" class="new-session" type="button"><span aria-hidden="true">＋</span> 开启新会话 <span class="tiny-arrow" aria-hidden="true">↗</span></button>
-      <div class="sidebar-section-heading"><span>工作空间</span><span class="local-tag">LOCAL</span></div>
-      <nav class="workspace-nav" aria-label="视图">
-        <button class="nav-item active" id="conversation-nav" type="button"><span aria-hidden="true">▤</span> 实时对话 <span id="message-count" class="nav-count">0</span></button>
-        <button class="nav-item" id="tasks-nav" type="button"><span aria-hidden="true">▦</span> 任务面板 <span id="task-count" class="nav-count">0</span></button>
-        <button class="nav-item" id="team-nav" type="button"><span aria-hidden="true">◎</span> 全员对话 <span class="nav-arrow" aria-hidden="true">↗</span></button>
-        <button class="nav-item" id="workflow-nav" type="button"><span aria-hidden="true">⑂</span> 协作工作树 <span class="nav-arrow" aria-hidden="true">↗</span></button>
-        <button class="nav-item" id="skills-open" type="button"><span aria-hidden="true">⌘</span> 接入指南 <span class="nav-arrow" aria-hidden="true">↗</span></button>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h16M4 17.5h16"/></symbol>
+    <symbol id="i-panel-left" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-panel-right" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/></symbol>
+    <symbol id="i-compose" viewBox="0 0 24 24"><path d="M12 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V12"/><path d="M17.6 3.9a1.9 1.9 0 0 1 2.7 2.7l-7.5 7.5-3.4.8.8-3.4Z"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M15.5 4.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/></symbol>
+    <symbol id="i-folder-move" viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/><path d="M10 13.5h5M13 11l2.5 2.5L13 16"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3.2"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 16.5v5M8.5 3.5h7M9.5 3.5v6L7 13.5v1.5h10v-1.5l-2.5-4v-6"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="4.5" rx="1.2"/><path d="M5 8.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5M10 12.5h4"/></symbol>
+    <symbol id="i-unarchive" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="4.5" rx="1.2"/><path d="M5 8.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5M12 17v-5M9.5 14.5 12 12l2.5 2.5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.8 12a2 2 0 0 0 2 1.8h5.4a2 2 0 0 0 2-1.8l.8-12"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6.5 9.5 17 4 11.5"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7.5 5.8v12.4a1 1 0 0 0 1.52.85l10-6.2a1 1 0 0 0 0-1.7l-10-6.2A1 1 0 0 0 7.5 5.8Z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5h6.5l-1 8 8.5-11h-6.5l1-8Z"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="4" width="7.5" height="7" rx="1.6"/><rect x="13" y="4" width="7.5" height="7" rx="1.6"/><rect x="3.5" y="13" width="7.5" height="7" rx="1.6"/><rect x="13" y="13" width="7.5" height="7" rx="1.6"/></symbol>
+    <symbol id="i-speaker" viewBox="0 0 24 24"><rect x="3" y="4" width="13" height="16" rx="2"/><rect x="18.2" y="4" width="2.8" height="4.6" rx="1"/><rect x="18.2" y="9.7" width="2.8" height="4.6" rx="1"/><rect x="18.2" y="15.4" width="2.8" height="4.6" rx="1"/></symbol>
+    <symbol id="i-solo" viewBox="0 0 24 24"><path d="M8.5 3.5H5.5a2 2 0 0 0-2 2v3M15.5 3.5h3a2 2 0 0 1 2 2v3M8.5 20.5H5.5a2 2 0 0 1-2-2v-3M15.5 20.5h3a2 2 0 0 0 2-2v-3"/></symbol>
+    <symbol id="i-pip" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="14" rx="2"/><rect x="12" y="11" width="6.5" height="5" rx="1"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/><path d="M12 2.5v9"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8.5a6 6 0 0 1 12 0c0 6.5 2.5 8.5 2.5 8.5h-17S6 15 6 8.5"/><path d="M10.2 20.5a2 2 0 0 0 3.6 0"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.9 1.4-1.9-.5-1.3.4-2.6 1.8-2.6h1.7a3.6 3.6 0 0 0 3.6-3.6C20.5 7.3 16.7 3.5 12 3.5Z"/><circle cx="7.8" cy="11.2" r="1.1"/><circle cx="10.5" cy="7.5" r="1.1"/><circle cx="15" cy="7.8" r="1.1"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M20.5 14.5a2 2 0 0 1-2 2H8l-4.5 4V5.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2Z"/></symbol>
+    <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3.5 7 2 2 3.5-3.5M3.5 17l2 2 3.5-3.5M13 7h7.5M13 12h7.5M13 17h7.5"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 20.5v-1.5a4 4 0 0 0-4-4H6.5a4 4 0 0 0-4 4v1.5"/><circle cx="9.2" cy="7.5" r="3.8"/><path d="M21.5 20.5v-1.5a4 4 0 0 0-3-3.9M15.5 3.7a3.8 3.8 0 0 1 0 7.4"/></symbol>
+    <symbol id="i-flow" viewBox="0 0 24 24"><rect x="3" y="3.5" width="6.5" height="6" rx="1.5"/><rect x="14.5" y="14.5" width="6.5" height="6" rx="1.5"/><path d="M6.2 9.5v2.5a3 3 0 0 0 3 3h5.3"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4.5 19V5.5a2 2 0 0 1 2-2h13v15h-13a2 2 0 0 0-2 2Zm0 0a2 2 0 0 0 2 2h13"/><path d="M8.5 7.5h7M8.5 11h4.5"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.3-2.4 3.6M12 17h.01"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19a10 10 0 0 1 0-14"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 16v-4.5M12 8h.01"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4 2.4 17.6A2 2 0 0 0 4.1 20.5h15.8a2 2 0 0 0 1.7-2.9L13.7 4a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17h.01"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M20.5 15v3.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V15M7.5 10.5 12 15l4.5-4.5M12 15V3.5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M20.5 15v3.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V15M7.5 8 12 3.5 16.5 8M12 3.5V15"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11.5" height="11.5" rx="2"/><path d="M5.5 15H5a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 5 3.5h8.5A1.5 1.5 0 0 1 15 5v.5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13.5a4.5 4.5 0 0 0 6.8.5l2.7-2.7a4.5 4.5 0 0 0-6.4-6.4L11.6 6.4"/><path d="M14 10.5a4.5 4.5 0 0 0-6.8-.5l-2.7 2.7a4.5 4.5 0 0 0 6.4 6.4l1.5-1.5"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 0 1-15 5.5"/><path d="M3.5 12a8.5 8.5 0 0 1 15-5.5"/><path d="M18.5 3v3.5H15M5.5 21v-3.5H9"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5.5" y="5.5" width="13" height="13" rx="2.5"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4.5h-5l-2 2.5H4.5a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2-2.5Z"/><circle cx="12" cy="13" r="3.4"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path d="m20.5 11.5-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 14 9l5.5 2L14 13l-2 5.5L10 13l-5.5-2L10 9Z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M19.5 4.5 11 13M17 14v4.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2h4.5"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 5 7.5 9 7.5 9s7.5-4 7.5-9V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><circle cx="9" cy="9" r="1.8"/><path d="m20.5 15-4-4L6 21"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-4v-5h-5v5h-4A1.5 1.5 0 0 1 4 19Z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+  </svg>
+
+  <div class="app" id="app" data-view="live" data-sidebar="open" data-side="open">
+    <aside class="sidebar" id="sidebar" aria-label="会话与项目">
+      <div class="sb-head">
+        <a class="brand" href="/" aria-label="Agents Talk 首页"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5.5h14v10H11l-4.5 3.5V5.5Z"/><path d="M9 9.5h6M9 12.5h3.5"/></svg></span><span class="brand-name">Agents Talk</span></a>
+        <button class="icon-btn" id="sidebar-collapse" type="button" aria-label="收起侧栏" title="收起侧栏（Ctrl+B）"><svg class="i"><use href="#i-panel-left"/></svg></button>
+      </div>
+      <div class="sb-actions">
+        <button class="sb-item sb-strong" id="new-session" type="button" disabled><svg class="i"><use href="#i-compose"/></svg><span>新建会话</span></button>
+        <label class="sb-search"><svg class="i sm" aria-hidden="true"><use href="#i-search"/></svg><input id="session-search" type="search" placeholder="搜索会话或项目" aria-label="搜索会话或项目" autocomplete="off"></label>
+      </div>
+      <nav class="sb-scroll" id="session-nav" aria-label="项目与会话">
+        <section class="sb-section" aria-labelledby="projects-heading">
+          <div class="sb-heading"><span id="projects-heading">项目</span><button class="icon-btn xs" id="new-project" type="button" aria-label="新建项目" title="新建项目"><svg class="i sm"><use href="#i-plus"/></svg></button></div>
+          <div id="project-list" class="project-list"></div>
+        </section>
+        <section class="sb-section" aria-labelledby="sessions-heading">
+          <div class="sb-heading"><span id="sessions-heading">会话</span><span class="sb-count" id="session-count">0</span></div>
+          <div id="session-list" class="session-list"><p class="sb-note">连接后显示会话</p></div>
+        </section>
+        <button class="sb-item sb-muted" id="archived-toggle" type="button" aria-expanded="false" hidden><svg class="i"><use href="#i-archive"/></svg><span>已归档</span><span class="sb-count" id="archived-count">0</span></button>
+        <div id="archived-list" class="session-list" hidden></div>
       </nav>
-      <div class="sidebar-section-heading"><span>协作成员</span><span id="agent-count">0</span></div>
-      <div id="agent-list" class="agent-list"><p class="sidebar-note">正在读取成员状态…</p></div>
-      <div class="sidebar-section-heading history-heading"><span>会话记录</span><span id="session-count">0</span></div>
-      <div id="session-list" class="session-list"><p class="sidebar-note">连接后显示会话</p></div>
-      <div class="sidebar-bottom">
-        <a href="/guide" target="_blank" rel="noopener" class="protocol-link"><span aria-hidden="true">↗</span> 协作协议与使用说明</a>
-        <div class="local-profile"><span class="avatar human-avatar" aria-hidden="true">你</span><div><strong>你的协作空间</strong><small>本地运行 · 人类掌舵</small></div><span class="profile-dot" aria-hidden="true"></span></div>
+      <div class="sb-foot">
+        <button class="sb-item" id="skills-open" type="button" disabled><svg class="i"><use href="#i-book"/></svg><span>接入指南</span></button>
+        <a class="sb-item" href="/guide" target="_blank" rel="noopener"><svg class="i"><use href="#i-help"/></svg><span>协议与说明</span><svg class="i xs sb-end"><use href="#i-external"/></svg></a>
+        <button class="sb-item" id="settings-open" type="button"><svg class="i"><use href="#i-sliders"/></svg><span>设置</span></button>
+        <div class="sb-status"><span class="connection-status" id="connection-status" role="status"><i></i><span>正在连接</span></span><span id="sync-label" class="sb-sync">等待本地服务</span></div>
       </div>
     </aside>
-    <button class="sidebar-scrim" id="sidebar-scrim" aria-label="关闭导航" hidden></button>
-    <main class="workspace">
+    <button class="sidebar-scrim" id="sidebar-scrim" type="button" aria-label="关闭导航" hidden></button>
+
+    <main class="main" id="main">
       <header class="topbar">
-        <div class="breadcrumb"><button class="icon-button mobile-menu" id="menu-toggle" type="button" aria-label="展开导航" aria-controls="sidebar" aria-expanded="false">☰</button><span>工作空间</span><span class="crumb-slash" aria-hidden="true">/</span><strong>实时对话</strong></div>
-        <div class="topbar-actions"><span class="connection-status" id="connection-status" role="status"><i></i><span>正在连接</span></span><span class="topbar-divider"></span><label class="export-select"><span aria-hidden="true">↓</span><select id="export-format" aria-label="导出当前会话"><option value="">导出会话</option><option value="json">JSON 文件</option><option value="md">Markdown 文件</option></select></label></div>
+        <button class="icon-btn" id="menu-toggle" type="button" aria-label="展开导航" aria-controls="sidebar" aria-expanded="false"><svg class="i"><use href="#i-menu"/></svg></button>
+        <div class="tb-title">
+          <button class="crumb" id="crumb-project" type="button" hidden></button>
+          <h1 id="session-title" title="双击重命名">正在连接</h1>
+          <button class="icon-btn xs" id="session-menu" type="button" aria-label="会话操作" aria-haspopup="menu" disabled><svg class="i sm"><use href="#i-more"/></svg></button>
+        </div>
+        <span id="session-status" class="status-pill" data-status="loading" role="status">等待连接</span>
+        <button class="chip-btn" id="mode-chip" type="button" title="协作设置"><span id="mode-chip-text">协作设置</span></button>
+        <nav class="seg view-tabs" id="view-tabs" role="tablist" aria-label="视图">
+          <button role="tab" type="button" id="live-open" data-view="live" aria-selected="true"><svg class="i sm"><use href="#i-live"/></svg><span>现场</span></button>
+          <button role="tab" type="button" id="workflow-open" data-view="flow" aria-selected="false" tabindex="-1"><svg class="i sm"><use href="#i-flow"/></svg><span>流程</span></button>
+          <button role="tab" type="button" id="records-open" data-view="records" aria-selected="false" tabindex="-1"><svg class="i sm"><use href="#i-book"/></svg><span>记录</span></button>
+        </nav>
+        <div class="tb-right">
+          <button class="icon-btn" id="attn-btn" type="button" aria-label="需要你处理" aria-haspopup="menu"><svg class="i"><use href="#i-bell"/></svg><b class="count" id="attn-count" hidden>0</b></button>
+          <button class="usage-chip" id="usage-chip" type="button" aria-haspopup="menu" title="已报告 token 用量"><span aria-hidden="true">Σ</span><b id="usage-chip-total">未报告</b></button>
+          <button class="presence" id="presence-btn" type="button" aria-label="成员状态"></button>
+          <button class="icon-btn" id="theme-btn" type="button" aria-label="切换主题" aria-haspopup="menu" title="主题"><svg class="i"><use href="#i-palette"/></svg></button>
+          <button class="icon-btn" id="side-toggle" type="button" aria-label="收起右侧面板" aria-pressed="true" title="右侧面板（Ctrl+J）"><svg class="i"><use href="#i-panel-right"/></svg></button>
+        </div>
       </header>
-      <div class="workspace-heading">
-        <div><div class="eyebrow"><span class="small-spark" aria-hidden="true">✳</span> 一起思考，一起完成</div><h1 id="session-title">让想法在这里汇合<span class="heading-dot">.</span></h1><p id="session-subtitle">连接你的智能体，开启一场有进展的对话。</p></div>
-        <div class="session-controls"><span id="session-status" class="status-pill">等待连接</span><button id="pause-resume" class="button button-white small-button" type="button" disabled>暂停</button><button id="finish-session" class="button button-white small-button" type="button" disabled>结束会话</button></div>
+      <div class="banners">
+        <div id="connection-error" class="banner banner-error" role="alert" hidden><svg class="i sm"><use href="#i-alert"/></svg><span id="connection-error-text"></span><button id="retry-connection" type="button" class="text-button">重新连接</button></div>
+        <div id="reader-warning" class="banner banner-info" role="status" hidden><svg class="i sm"><use href="#i-clock"/></svg><span id="reader-warning-text"></span><button id="reader-reconnect" type="button" class="text-button">恢复接入</button></div>
+        <div id="migration-warning" class="banner banner-error" role="alert" hidden></div>
+        <div id="library-warning" class="banner banner-info" role="status" hidden></div>
       </div>
-      <div id="connection-error" class="error-banner" role="alert" hidden><span id="connection-error-text"></span><button id="retry-connection" type="button">重新连接</button></div>
-      <div id="reader-warning" class="error-banner" role="status" hidden><span id="reader-warning-text"></span><button id="reader-reconnect" type="button">恢复接入</button></div>
-      <div id="migration-warning" class="error-banner" role="alert" hidden></div>
-      <div class="settings-row">
-        <div class="mode-field"><label for="mode-select">协作模式</label><select id="mode-select" disabled><option value="leader">主导协作</option><option value="roundtable">圆桌讨论</option></select></div>
-        <div class="mode-field" id="lead-field"><label for="lead-select">主导成员</label><select id="lead-select" disabled><option value="">等待成员接入</option></select></div>
-        <p id="mode-description">由主导成员统筹任务，其他成员协同推进。</p>
-      </div>
-      <section class="context-setting" aria-label="参与成员设置"><strong>参与实例</strong><div id="participant-options" class="participant-options"></div><p>同一客户端可开多个独立对话，每个窗口使用独立实例编号。</p><button id="instances-open" class="button button-primary small-button" type="button" disabled>＋ 管理协作实例</button></section>
-      <section class="context-setting" aria-label="成员上下文设置">
-        <label class="context-switch"><input id="shared-context" type="checkbox" role="switch" aria-describedby="context-description" disabled><span class="switch-track" aria-hidden="true"></span><span><strong>全局协作上下文</strong><small id="context-mode-label">关闭 · 聚焦主导与自己</small></span></label>
-        <p id="context-description">其他成员仅接收主导成员和自己的任务信息；主导成员保留全队摘要。</p>
-        <button id="context-preview-open" class="button button-white small-button" type="button" disabled>预览成员所见</button>
-      </section>
-      <div class="view-launcher"><div><strong>协作观察窗</strong><span>从对话到交付，看见每一步</span></div><div><button id="team-open" class="button button-white" type="button">◎ 全员对话</button><button id="workflow-open" class="button button-primary" type="button">⑂ 协作工作树</button></div></div>
-      <div class="workbench">
-        <section class="conversation-panel" id="conversation" aria-labelledby="conversation-heading" tabindex="-1">
-          <div class="panel-heading"><div class="panel-title"><span class="live-dot" id="conversation-live-dot" aria-hidden="true"></span><h2 id="conversation-heading">对话现场</h2><span class="section-hint" id="conversation-meta">等待第一条消息</span></div><div class="panel-actions"><button class="text-button" id="clear-filters" type="button" hidden>清除筛选</button><button id="conversation-expand" class="button button-white small-button" type="button" aria-expanded="false">放大阅读 ↗</button></div></div>
-          <div class="conversation-toolbar"><label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="search-input" type="search" placeholder="搜索对话内容…" aria-label="搜索已加载的对话内容" autocomplete="off"></label><select id="agent-filter" aria-label="按成员筛选对话"><option value="all">全部成员</option></select></div>
-          <div id="message-scroll" class="message-scroll" tabindex="0" aria-label="会话消息">
-            <div class="history-loader"><button id="load-older" class="text-button" type="button" hidden>加载更早的消息</button></div>
-            <div id="messages"></div>
-            <div id="empty-conversation" class="empty-conversation"><div class="empty-art" aria-hidden="true"><span class="orbit-avatar orbit-one">C</span><span class="orbit-avatar orbit-two">X</span><span class="orbit-avatar orbit-three">R</span><span class="empty-center"><svg viewBox="0 0 48 48"><path d="M10 10h28v22H22L10 40V10Z"/><path d="M17 18h14M17 24h9"/></svg></span><span class="orbit-dot"></span></div><span class="empty-eyebrow">从一个想法开始</span><h3>留个问题，让大家一起想。</h3><p>在下方写下需求，或先让智能体接入。<br>消息、任务与进度会在这里汇合。</p><button class="button button-white" id="empty-guide" type="button">查看智能体接入指南 <span aria-hidden="true">↗</span></button><div class="empty-steps"><span><b>01</b> 接入成员</span><span><b>02</b> 描述需求</span><span><b>03</b> 一起推进</span></div></div>
-            <div id="no-results" class="no-results" hidden><h3>没有匹配的消息</h3><p>试试其他关键词或成员。搜索范围为已加载的消息。</p></div>
+
+      <div class="views">
+        <section class="view view-live" id="view-live" aria-label="协作现场">
+          <div class="stage" id="stage" data-layout="gallery">
+            <div class="stage-head">
+              <strong>成员画面</strong><span id="stage-sub" class="stage-sub"></span><span class="sp"></span>
+              <span class="cap-indicator" id="cap-indicator" hidden><i></i><span id="cap-ind-text"></span><span class="cap-ind-note"> · 仅本机可见</span><button id="stop-all-capture" type="button">全部停止</button></span>
+            </div>
+            <div class="stage-area" id="stage-area">
+              <div class="onboarding" id="onboarding" hidden></div>
+              <div class="stage-grid" id="stage-grid"></div>
+            </div>
+            <svg class="handoff" id="handoff" aria-hidden="true"></svg>
+            <div class="dock" role="toolbar" aria-label="协作控制">
+              <button class="dock-btn" id="pause-resume" type="button" disabled><svg class="i"><use href="#i-pause"/></svg><span>暂停协作</span></button>
+              <button class="dock-btn" id="intervene-open" type="button" disabled><svg class="i"><use href="#i-bolt"/></svg><span>优先干预</span></button>
+              <span class="dock-sep"></span>
+              <button class="dock-btn" id="capture-open" type="button" aria-haspopup="menu"><svg class="i"><use href="#i-monitor"/></svg><span class="keep">画面 <b id="capture-count">0/0</b></span><svg class="i xs"><use href="#i-chevron"/></svg></button>
+              <button class="dock-btn" id="layout-open" type="button" aria-haspopup="menu"><svg class="i" id="layout-icon"><use href="#i-grid"/></svg><span id="layout-label">宫格</span><svg class="i xs"><use href="#i-chevron"/></svg></button>
+              <button class="dock-btn" id="pip-open" type="button"><svg class="i"><use href="#i-pip"/></svg><span>悬浮窗</span></button>
+              <button class="dock-btn icon-only" id="more-open" type="button" aria-label="更多操作" aria-haspopup="menu"><svg class="i"><use href="#i-more"/></svg></button>
+              <span class="dock-sep"></span>
+              <button class="dock-btn end" id="finish-session" type="button" disabled><svg class="i"><use href="#i-power"/></svg><span>结束会话</span></button>
+            </div>
           </div>
-          <button id="jump-latest" class="jump-latest" type="button" hidden>有新消息 · 回到底部 ↓</button>
-          <form class="composer" id="message-form">
-            <div class="composer-tabs" role="tablist" aria-label="发送内容类型"><button id="tab-message" class="composer-tab selected" type="button" role="tab" aria-selected="true" aria-controls="message-options">发送消息</button><button id="tab-media" class="composer-tab" type="button" role="tab" aria-selected="false" aria-controls="media-options" tabindex="-1">媒体任务<span class="tab-mini">创作</span></button></div>
-            <div id="message-options" class="composer-options" role="tabpanel" aria-labelledby="tab-message"><label>发送给<select id="recipient-select"><option value="all">所有成员</option><option value="claude">Claude</option><option value="codex">Codex</option><option value="reasonix">Reasonix</option><option value="zcode">ZCode</option></select></label><label>优先级<select id="message-type"><option value="say">普通需求</option><option value="intervention">优先干预</option></select></label></div>
-            <div id="media-options" class="composer-options media-options" role="tabpanel" aria-labelledby="tab-media" hidden><label>执行成员<select id="media-recipient"><option value="claude">Claude</option><option value="codex">Codex</option></select></label><label>任务类型<select id="media-kind"><option value="image_generate">图像生成</option><option value="image_edit">图像编辑</option><option value="video_generate">视频生成</option></select></label><span id="media-capability" class="capability-note">能力未验证</span></div>
-            <div id="composer-notice" class="composer-notice" hidden></div>
-            <label for="message-body" class="sr-only">消息或媒体任务需求</label><textarea id="message-body" rows="3" placeholder="写下你的需求，给协作一个起点…"></textarea>
-            <div id="attachment-list" class="attachment-list" aria-label="待发送附件"></div>
-            <p id="composer-error" class="inline-error" role="alert" hidden></p>
-            <div class="composer-footer"><div class="composer-tools"><button id="attach-button" class="attach-button" type="button" aria-label="添加附件"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 13 7-7a3 3 0 0 1 4 4L9 20a5 5 0 0 1-7-7L13 2"/></svg><span>添加附件</span></button><input id="file-input" type="file" multiple hidden><span class="keyboard-hint">Ctrl + Enter 发送</span></div><button id="send-button" type="submit" class="button button-primary" disabled><span id="send-label">发送消息</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div>
-          </form>
+
+          <aside class="side" id="side" aria-label="对话、任务与成员">
+            <div class="side-resize" id="side-resize" role="separator" aria-orientation="vertical" aria-label="调整面板宽度" tabindex="0"></div>
+            <div class="side-tabs" role="tablist" aria-label="面板">
+              <button class="side-tab" role="tab" type="button" id="conversation-nav" data-tab="chat" aria-selected="true" aria-controls="conversation"><svg class="i sm"><use href="#i-message"/></svg>对话<span class="n" id="message-count">0</span></button>
+              <button class="side-tab" role="tab" type="button" id="tasks-nav" data-tab="tasks" aria-selected="false" aria-controls="task-panel" tabindex="-1"><svg class="i sm"><use href="#i-tasks"/></svg>任务<span class="n" id="task-count">0</span></button>
+              <button class="side-tab" role="tab" type="button" id="members-nav" data-tab="members" aria-selected="false" aria-controls="members-panel" tabindex="-1"><svg class="i sm"><use href="#i-users"/></svg>成员<span class="n" id="agent-count">0</span></button>
+              <span class="sp"></span>
+              <button class="icon-btn sm" id="side-close" type="button" aria-label="收起右侧面板"><svg class="i sm"><use href="#i-x"/></svg></button>
+            </div>
+
+            <section class="pane" id="conversation" role="tabpanel" aria-labelledby="conversation-nav" tabindex="-1">
+              <div class="chat-tools">
+                <div class="seg-mini" id="detail-mode" role="group" aria-label="事件显示方式">
+                  <button type="button" data-detail="summary" aria-pressed="true" title="每条事件只显示要点，点击展开">概要</button>
+                  <button type="button" data-detail="full" aria-pressed="false" title="展开全部内容">详细</button>
+                </div>
+                <div class="chips" id="chat-filters" role="group" aria-label="按类型筛选">
+                  <button class="chip" type="button" data-f="all" aria-pressed="true">全部</button>
+                  <button class="chip" type="button" data-f="talk" aria-pressed="false">讨论</button>
+                  <button class="chip" type="button" data-f="task" aria-pressed="false">任务</button>
+                  <button class="chip" type="button" data-f="human" aria-pressed="false">人工</button>
+                </div>
+                <span class="sp"></span>
+                <button class="icon-btn sm" id="search-toggle" type="button" aria-label="搜索与成员筛选" aria-pressed="false"><svg class="i sm"><use href="#i-search"/></svg></button>
+              </div>
+              <div class="chat-search" id="chat-search" hidden>
+                <label class="search-field"><svg class="i sm" aria-hidden="true"><use href="#i-search"/></svg><input id="search-input" type="search" placeholder="搜索已加载的对话" aria-label="搜索已加载的对话内容" autocomplete="off"></label>
+                <select id="agent-filter" aria-label="按成员筛选对话"><option value="all">全部成员</option></select>
+                <button class="text-button" id="clear-filters" type="button" hidden>清除筛选</button>
+              </div>
+              <div class="chat-wrap">
+                <div id="message-scroll" class="message-scroll" tabindex="0" aria-label="会话消息">
+                  <div id="pinned" class="pinned-area"></div>
+                  <div class="history-loader"><button id="load-older" class="text-button" type="button" hidden>加载更早的消息</button></div>
+                  <div id="messages" class="messages" data-detail="summary"></div>
+                  <div id="empty-conversation" class="empty-state">
+                    <span class="empty-mark" aria-hidden="true"><svg class="i"><use href="#i-message"/></svg></span>
+                    <h3>还没有消息</h3>
+                    <p>把各成员的接入说明发到对应客户端，报到后在下方写下第一条需求。</p>
+                    <button class="btn btn-line sm" id="empty-guide" type="button" disabled>查看接入指南</button>
+                  </div>
+                  <div id="no-results" class="empty-state" hidden><h3>没有匹配的消息</h3><p>换个关键词或成员试试。搜索范围为已加载的消息。</p></div>
+                </div>
+                <button id="jump-latest" class="jump" type="button" hidden>有新消息 · 回到底部</button>
+              </div>
+              <form class="composer" id="message-form" aria-busy="false" autocomplete="off">
+                <div class="composer-bar">
+                  <div class="seg-mini" role="tablist" aria-label="发送内容类型">
+                    <button id="tab-message" type="button" role="tab" aria-selected="true" aria-controls="message-options">消息</button>
+                    <button id="tab-media" type="button" role="tab" aria-selected="false" aria-controls="media-options" tabindex="-1">媒体任务</button>
+                  </div>
+                  <div id="message-options" class="composer-options" role="tabpanel" aria-labelledby="tab-message">
+                    <label class="select-chip"><span>发送给</span><select id="recipient-select"><option value="all">所有成员</option></select></label>
+                    <button type="button" class="toggle-chip" id="intervene-toggle" aria-pressed="false" title="成员下次读取时必须确认"><svg class="i xs"><use href="#i-bolt"/></svg>优先干预</button>
+                  </div>
+                  <div id="media-options" class="composer-options" role="tabpanel" aria-labelledby="tab-media" hidden>
+                    <label class="select-chip"><span>执行</span><select id="media-recipient"></select></label>
+                    <label class="select-chip"><span>类型</span><select id="media-kind"><option value="image_generate">图像生成</option><option value="image_edit">图像编辑</option><option value="video_generate">视频生成</option></select></label>
+                    <span id="media-capability" class="badge">能力未验证</span>
+                  </div>
+                </div>
+                <div id="composer-notice" class="composer-notice" hidden></div>
+                <p id="draft-storage-notice" class="composer-notice" role="status" hidden>浏览器本地存储不可用或空间不足。草稿只保留在当前页面，刷新或关闭可能丢失；已发布的消息不受影响。</p>
+                <div class="box">
+                  <div id="attachment-list" class="attach-tray" aria-label="待发送附件"></div>
+                  <label for="message-body" class="sr-only">消息或媒体任务需求</label>
+                  <textarea id="message-body" rows="2" placeholder="写下需求或补充说明…"></textarea>
+                  <div class="box-foot">
+                    <button type="button" class="icon-btn sm" id="attach-button" aria-label="添加附件" title="添加附件（也可粘贴或拖入）"><svg class="i sm"><use href="#i-clip"/></svg></button>
+                    <input id="file-input" type="file" multiple hidden>
+                    <button type="button" class="icon-btn sm" id="snapshot-button" aria-label="截取成员画面" title="截取成员画面" aria-haspopup="menu"><svg class="i sm"><use href="#i-camera"/></svg></button>
+                    <span class="kbd-hint">Ctrl + Enter 发送</span>
+                    <span class="sp"></span>
+                    <button id="send-button" type="submit" class="send" disabled><span id="send-label">发送</span><svg class="i sm"><use href="#i-send"/></svg></button>
+                  </div>
+                </div>
+                <p id="composer-error" class="inline-error" role="alert" hidden></p>
+              </form>
+            </section>
+
+            <section class="pane" id="task-panel" role="tabpanel" aria-labelledby="tasks-nav" tabindex="-1" hidden>
+              <div class="pane-scroll">
+                <div class="pane-summary">
+                  <div class="sum-top"><strong id="task-progress-label">0 / 0</strong><span id="task-summary-label">等待任务</span></div>
+                  <div class="progress" role="progressbar" id="task-progress" aria-label="任务验收进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+                  <div id="workflow-summary" class="workflow-summary"></div>
+                </div>
+                <div id="task-list" class="task-list"></div>
+                <section class="locks" aria-labelledby="locks-heading"><h3 id="locks-heading"><svg class="i xs"><use href="#i-lock"/></svg>文件占用 <span id="lock-count" class="count-badge">0</span></h3><div id="lock-list"><p class="muted">暂无占用中的文件</p></div></section>
+              </div>
+            </section>
+
+            <section class="pane" id="members-panel" role="tabpanel" aria-labelledby="members-nav" tabindex="-1" hidden>
+              <div class="pane-scroll">
+                <div class="pane-summary">
+                  <div class="sum-top"><strong id="members-online">0</strong><span id="members-summary">位参与</span></div>
+                  <div class="pane-actions">
+                    <button id="instances-open" class="btn btn-line sm" type="button" disabled><svg class="i sm"><use href="#i-plus"/></svg>管理协作实例</button>
+                    <button id="context-preview-open" class="btn btn-line sm" type="button" disabled><svg class="i sm"><use href="#i-eye"/></svg>预览成员所见</button>
+                  </div>
+                </div>
+                <div id="agent-list" class="member-list"></div>
+                <section class="usage-card" aria-labelledby="usage-heading">
+                  <div class="card-heading"><h3 id="usage-heading">Token 用量</h3><select id="usage-scope" aria-label="Token 统计范围"><option value="session">当前会话</option><option value="all">全部会话</option></select></div>
+                  <div class="usage-total"><strong id="usage-total">未报告</strong><span>已报告 token 合计</span></div>
+                  <label class="usage-group-label">统计维度 <select id="usage-group" aria-label="Token 统计维度"><option value="instance">按协作实例</option><option value="client">按客户端汇总</option></select></label>
+                  <div id="usage-list"></div>
+                  <p class="footnote">数值由成员从客户端用量记录上报，可能只覆盖部分调用；缓存输入与推理输出已含在总量中。看板文本估算只统计发言，不代表实际消耗。</p>
+                </section>
+                <section class="capability-card" aria-labelledby="capability-heading">
+                  <div class="card-heading"><h3 id="capability-heading">媒体能力</h3><span class="subtle">成员报告</span></div>
+                  <div id="capability-list" class="capability-list"></div>
+                </section>
+              </div>
+            </section>
+          </aside>
         </section>
-        <aside class="context-panel" id="task-panel" aria-label="会话任务与协作状态" tabindex="-1">
-          <section class="context-card workflow-preview"><div class="context-card-heading"><h2>协作工作树</h2><span class="subtle-tag">实时记录</span></div><div id="workflow-summary"></div><button id="workflow-preview-open" class="button button-white small-button" type="button">查看派工与整合 ↗</button></section>
-          <section class="context-card usage-card"><div class="context-card-heading"><h2>Token 用量</h2><select id="usage-scope" aria-label="Token 统计范围"><option value="session">当前会话</option><option value="all">全部会话</option></select></div><div class="usage-total"><strong id="usage-total">未报告</strong><span>已报告 token 合计</span></div><label class="usage-group-label">统计维度 <select id="usage-group" aria-label="Token 统计维度"><option value="instance">按协作实例</option><option value="client">按客户端汇总</option></select></label><div id="usage-list"></div><p class="context-footnote">实际值由成员从客户端用量记录上报，可能只覆盖部分调用。缓存输入和推理输出已含在总量中。文本估算仅统计看板发言，不代表模型实际消耗，也不包含图片或视频费用。</p></section>
-          <section class="context-card task-card"><div class="context-card-heading"><h2>任务看板</h2><span id="task-total" class="count-badge">0</span></div><div class="task-summary"><span id="task-summary-label">等待任务</span><strong id="task-progress-label">0 / 0</strong></div><div class="progress-track" role="progressbar" id="task-progress" aria-label="任务完成进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div><div id="task-list" class="task-list"><div class="compact-empty"><span aria-hidden="true">▦</span><h3>下一步，逐渐清晰</h3><p>成员创建任务后，负责人和进度会在这里更新。</p></div></div></section>
-          <section class="context-card"><div class="context-card-heading"><h2>媒体能力</h2><span class="subtle-tag">成员报告</span></div><div id="capability-list" class="capability-list"></div><p class="context-footnote">能力以成员报告为准；未验证时请先确认接入环境。</p></section>
-          <section class="context-card lock-card"><div class="context-card-heading"><h2>文件协作</h2><span id="lock-count" class="count-badge">0</span></div><div id="lock-list"><p class="context-empty">暂无占用中的文件</p></div></section>
-          <div class="human-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 7v6c0 5 9 9 9 9s9-4 9-9V7l-9-4Z"/><path d="m8 12 3 3 5-6"/></svg><div><strong>方向，由你决定。</strong><p>随时提出需求、优先干预，<br>或暂停当前协作。</p></div></div>
-        </aside>
+
+        <section class="view view-flow" id="view-flow" aria-label="任务流程" hidden>
+          <div class="page">
+            <div class="page-head">
+              <div><h2>任务流程</h2><p id="workflow-meta">派发 → 执行 → 独立验收 → 整合</p></div>
+              <span class="sp"></span>
+              <label class="search-field"><svg class="i sm" aria-hidden="true"><use href="#i-search"/></svg><input id="workflow-search" type="search" placeholder="搜索任务、成员或编号" aria-label="搜索任务流程"></label>
+            </div>
+            <div id="workflow-scroll" class="flow-scroll" tabindex="0" aria-label="任务流程">
+              <section class="dispatch-section" aria-label="最近任务派发">
+                <header><span class="dispatch-dot" aria-hidden="true"></span><strong>最近派发</strong><span class="sp"></span><span id="dispatch-live-label" class="muted"></span></header>
+                <div id="workflow-dispatch" class="dispatch-strip"></div>
+                <p id="dispatch-empty" class="muted">正式任务发布后，这里显示派发者、接收者和任务内容。</p>
+              </section>
+              <div id="workflow-tree"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view view-records" id="view-records" aria-label="会话记录" hidden>
+          <div class="records">
+            <aside class="records-side">
+              <h3>显示方式</h3>
+              <div class="seg-mini" id="records-detail" role="group" aria-label="记录显示方式"><button type="button" data-detail="summary" aria-pressed="false">概要</button><button type="button" data-detail="full" aria-pressed="true">详细</button></div>
+              <h3>导出当前会话</h3>
+              <label class="select-line"><svg class="i sm" aria-hidden="true"><use href="#i-download"/></svg><select id="export-format" aria-label="导出当前会话"><option value="">选择格式</option><option value="json">JSON 文件</option><option value="md">Markdown 文件</option></select></label>
+              <p class="footnote">导出包含当前会话的全部消息与附件路径，不打包附件文件。</p>
+            </aside>
+            <div class="reading">
+              <div class="page-head"><div><h2>会话记录</h2><p id="records-meta"></p></div></div>
+              <div id="records-list" class="messages records-list" data-detail="full"></div>
+              <div class="history-loader"><button id="records-older" class="text-button" type="button" hidden>加载更早的消息</button></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view view-project" id="view-project" aria-label="项目" hidden>
+          <div class="page project-page" id="project-page"></div>
+        </section>
       </div>
-      <footer class="workspace-footer"><span>AGENTS TALK <span class="footer-dot">·</span> 让协作有迹可循</span><span id="sync-label">等待本地服务</span></footer>
     </main>
+
+    <nav class="mobile-tabs" id="mobile-tabs" aria-label="窄屏导航">
+      <button type="button" data-m="live" aria-current="page"><svg class="i"><use href="#i-live"/></svg><span>现场</span></button>
+      <button type="button" data-m="chat"><svg class="i"><use href="#i-message"/></svg><span>对话</span></button>
+      <button type="button" data-m="tasks"><svg class="i"><use href="#i-tasks"/></svg><span>任务</span></button>
+      <button type="button" data-m="members"><svg class="i"><use href="#i-users"/></svg><span>成员</span></button>
+      <button type="button" data-m="flow"><svg class="i"><use href="#i-flow"/></svg><span>流程</span></button>
+    </nav>
   </div>
-  <dialog id="session-dialog" class="modal"><form id="session-form"><div class="modal-heading"><div><span class="eyebrow">新的开始</span><h2>开启一场新协作</h2></div><button class="icon-button modal-close" type="button" aria-label="关闭新建会话">×</button></div><label class="form-field">会话名称<input id="new-session-title" name="title" required maxlength="120" placeholder="这次想一起完成什么？" autocomplete="off"></label><label class="form-field">协作模式<select id="new-session-mode"><option value="leader">主导协作</option><option value="roundtable">圆桌讨论</option></select></label><p class="modal-hint">新会话会保留已有历史，方便随时回看和继续。</p><p id="session-form-error" class="inline-error" role="alert" hidden></p><div class="modal-actions"><button class="button button-white modal-close" type="button">取消</button><button id="create-session-submit" class="button button-primary" type="submit">创建会话</button></div></form></dialog>
-  <dialog id="skills-dialog" class="modal skills-modal"><div class="modal-heading"><div><span class="eyebrow">连接你的协作伙伴</span><h2>智能体接入指南</h2></div><button class="icon-button modal-close" type="button" aria-label="关闭接入指南">×</button></div><p class="modal-hint">选择成员，将下方调用说明复制到对应智能体的会话中。说明由本地服务提供。</p><div id="skill-tabs" class="skill-tabs" role="tablist" aria-label="智能体接入说明"></div><div id="skill-content" role="tabpanel"><div class="skill-code-heading"><span id="skill-name"></span><button id="copy-skill" class="text-button" type="button">复制调用说明</button></div><pre id="skill-code" class="skill-code" tabindex="0"></pre><p id="skill-error" class="inline-error" role="alert" hidden></p></div><div class="modal-bottom"><span>接入后等待成员发送心跳。</span><a href="/guide" target="_blank" rel="noopener">阅读完整协议 ↗</a></div></dialog>
-  <dialog id="finish-dialog" class="modal"><form id="finish-form"><div class="modal-heading"><h2>结束当前会话？</h2><button class="icon-button modal-close" type="button" aria-label="关闭结束确认">×</button></div><p class="modal-hint">将向成员发送结束信号。对话记录会保留，你仍可查看和导出。</p><p id="finish-error" class="inline-error" role="alert" hidden></p><div class="modal-actions"><button class="button button-white modal-close" type="button">继续协作</button><button id="confirm-finish" class="button button-danger" type="submit">结束会话</button></div></form></dialog>
-  <dialog id="context-dialog" class="modal skills-modal"><div class="modal-heading"><div><span class="eyebrow">按需读取 · 来源可查</span><h2>成员上下文预览</h2></div><button class="icon-button modal-close" type="button" aria-label="关闭上下文预览">×</button></div><label class="form-field">查看成员<select id="context-agent"><option value="codex">Codex</option><option value="claude">Claude Code</option><option value="reasonix">Reasonix</option><option value="zcode">ZCode</option></select></label><p class="modal-hint" id="context-preview-meta">读取当前成员可见的摘要。</p><pre class="skill-code context-preview" id="context-preview" tabindex="0"></pre><p id="context-preview-error" class="inline-error" role="alert" hidden></p><button id="context-next" class="text-button" type="button" hidden>下一页任务摘要</button><p class="modal-hint">人工面板保留完整记录。开关控制成员后续读取范围，已进入客户端的内容无法撤回。</p></dialog>
-  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
-  <dialog id="instances-dialog" class="modal instances-modal" aria-labelledby="instances-title">
-    <div class="modal-heading"><div><span class="eyebrow">同客户端 · 多窗口 · 独立分工</span><h2 id="instances-title">协作实例</h2></div><button class="icon-button modal-close" type="button" aria-label="关闭协作实例">×</button></div>
-    <p class="modal-hint">可创建多个 Codex、Claude、Reasonix 或 ZCode 实例。主导、协同与验收可使用相同模型，每个实例在独立客户端对话中接入。这里不自动打开客户端、不切换模型、不启动模型调用。</p>
+
+  <div class="pop" id="pop" role="menu" hidden></div>
+  <div class="drawer-scrim" id="drawer-scrim" hidden></div>
+  <aside class="drawer" id="settings-drawer" aria-labelledby="settings-title" hidden>
+    <div class="drawer-head"><h2 id="settings-title">设置</h2><span class="sp"></span><button class="icon-btn" id="settings-close" type="button" aria-label="关闭设置"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <nav class="drawer-tabs" role="tablist" aria-label="设置分类">
+      <button type="button" role="tab" data-settings="collab" aria-selected="true">协作</button>
+      <button type="button" role="tab" data-settings="appearance" aria-selected="false" tabindex="-1">外观</button>
+      <button type="button" role="tab" data-settings="display" aria-selected="false" tabindex="-1">显示与通知</button>
+      <button type="button" role="tab" data-settings="capture" aria-selected="false" tabindex="-1">画面</button>
+    </nav>
+    <div class="drawer-body">
+      <section class="dsec" data-settings-pane="collab">
+        <p class="dsec-note">以下设置只作用于当前会话，成员下次读取时生效。</p>
+        <div class="field-row"><label for="mode-select">协作模式</label><select id="mode-select" class="select" disabled><option value="leader">主导协作</option><option value="roundtable">圆桌讨论</option></select></div>
+        <p class="field-help" id="mode-description">由主导成员统筹任务，其他成员协同推进。</p>
+        <div class="field-row"><label for="lead-select">主导成员</label><select id="lead-select" class="select" disabled><option value="">等待成员接入</option></select></div>
+        <div class="field-row switch-row">
+          <label class="switch-label" for="shared-context"><strong>全局协作上下文</strong><small id="context-mode-label">关闭 · 聚焦主导与自己</small></label>
+          <span class="switch"><input id="shared-context" type="checkbox" role="switch" aria-describedby="context-description" disabled><span aria-hidden="true"></span></span>
+        </div>
+        <p class="field-help" id="context-description">其他成员只读取主导成员和自己的任务信息；主导成员保留全队摘要。</p>
+        <p class="field-help">参与成员与实例管理在右侧「成员」页。</p>
+      </section>
+      <section class="dsec" data-settings-pane="appearance" hidden>
+        <div class="theme-head"><h3>主题</h3><div class="seg-mini" id="theme-follow" role="group" aria-label="主题来源"><button type="button" data-follow="manual" aria-pressed="true">手动选择</button><button type="button" data-follow="system" aria-pressed="false">跟随系统</button></div></div>
+        <div id="theme-system-prefs" class="theme-system" hidden>
+          <label class="field-row"><span>浅色时使用</span><select id="theme-light-pref" class="select"></select></label>
+          <label class="field-row"><span>深色时使用</span><select id="theme-dark-pref" class="select"></select></label>
+        </div>
+        <div id="theme-list" class="theme-list" role="radiogroup" aria-label="主题"></div>
+        <div class="theme-actions">
+          <button class="btn btn-line sm" id="theme-new" type="button"><svg class="i sm"><use href="#i-plus"/></svg>基于当前主题新建</button>
+          <button class="btn btn-line sm" id="theme-import" type="button"><svg class="i sm"><use href="#i-upload"/></svg>导入</button>
+          <input id="theme-import-file" type="file" accept="application/json,.json" hidden>
+        </div>
+        <div id="theme-editor" class="theme-editor" hidden></div>
+        <h3>界面字号</h3>
+        <div class="seg-mini" id="ui-scale" role="group" aria-label="界面字号"><button type="button" data-scale="13">小</button><button type="button" data-scale="14">标准</button><button type="button" data-scale="15">大</button><button type="button" data-scale="16">特大</button></div>
+      </section>
+      <section class="dsec" data-settings-pane="display" hidden>
+        <h3>事件显示</h3>
+        <p class="field-help">每条事件都会显示。概要只显示要点，点击某条可以展开细节；详细默认展开全部内容。</p>
+        <div class="field-row"><span>默认方式</span><div class="seg-mini" id="pref-detail" role="group" aria-label="默认事件显示"><button type="button" data-detail="summary">概要</button><button type="button" data-detail="full">详细</button></div></div>
+        <div class="field-row switch-row"><label class="switch-label" for="pref-new-flash"><strong>高亮新事件</strong><small>新同步的事件短暂高亮</small></label><span class="switch"><input id="pref-new-flash" type="checkbox"><span aria-hidden="true"></span></span></div>
+        <h3>桌面通知</h3>
+        <div class="field-row switch-row"><label class="switch-label" for="pref-notify"><strong>重要事件通知</strong><small>页面不在前台时，提醒受阻、待验收、干预全部确认和成员退出</small></label><span class="switch"><input id="pref-notify" type="checkbox"><span aria-hidden="true"></span></span></div>
+        <p class="field-help" id="notify-status"></p>
+      </section>
+      <section class="dsec" data-settings-pane="capture" hidden>
+        <p class="dsec-note"><svg class="i xs"><use href="#i-shield"/></svg>画面只在本机浏览器中显示，不写入记录，也不发送给成员。截图需要你确认后才会上传为附件。</p>
+        <div class="field-row"><span>默认画质</span><div class="seg-mini" id="pref-quality" role="group" aria-label="默认画质"><button type="button" data-quality="15">流畅</button><button type="button" data-quality="5">均衡</button><button type="button" data-quality="1">省电</button></div></div>
+        <div class="field-row"><label for="pref-static">静止提醒</label><select id="pref-static" class="select"><option value="60">1 分钟</option><option value="180">3 分钟</option><option value="300">5 分钟</option></select></div>
+        <p class="field-help">画面持续没有变化时标注“静止”；只有该成员有进行中的任务时才用琥珀色提醒。</p>
+        <div class="field-row switch-row"><label class="switch-label" for="pref-follow"><strong>自动跟随发言成员</strong><small>聚焦布局下，主画面切到最近发言的成员</small></label><span class="switch"><input id="pref-follow" type="checkbox"><span aria-hidden="true"></span></span></div>
+        <div class="field-row switch-row"><label class="switch-label" for="pref-captions"><strong>显示发言字幕</strong><small>成员在看板发布的最新消息显示在画面底部</small></label><span class="switch"><input id="pref-captions" type="checkbox"><span aria-hidden="true"></span></span></div>
+        <div class="field-row switch-row"><label class="switch-label" for="pref-leave"><strong>离开页面前提醒</strong><small>刷新或关闭页面会结束所有画面</small></label><span class="switch"><input id="pref-leave" type="checkbox"><span aria-hidden="true"></span></span></div>
+        <p class="field-help">窗口可以被遮挡，但不要最小化。Chromium/Electron 类程序被完全盖住时可能暂停绘制，画面会显示为静止。远程控制属于后续规划，当前只查看画面。</p>
+      </section>
+    </div>
+  </aside>
+
+  <dialog id="session-dialog" class="modal" aria-labelledby="session-dialog-title"><form id="session-form" method="dialog">
+    <div class="modal-heading"><div><span class="eyebrow">新的开始</span><h2 id="session-dialog-title">新建协作会话</h2></div><button class="icon-btn modal-close" type="button" aria-label="关闭新建会话"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <label class="form-field">会话名称<input id="new-session-title" name="title" required maxlength="120" placeholder="这次想一起完成什么？" autocomplete="off"></label>
+    <div class="form-grid">
+      <label class="form-field">所属项目<select id="new-session-project"><option value="">不放入项目</option></select></label>
+      <label class="form-field">协作模式<select id="new-session-mode"><option value="leader">主导协作</option><option value="roundtable">圆桌讨论</option></select></label>
+      <label class="form-field">主导成员<select id="new-session-lead"></select></label>
+      <label class="form-field switch-field"><span>全局协作上下文</span><span class="switch"><input id="new-session-shared" type="checkbox"><span aria-hidden="true"></span></span></label>
+    </div>
+    <fieldset class="form-field participants-field"><legend>参与成员</legend><div id="new-session-participants" class="check-row"></div></fieldset>
+    <p class="modal-hint">选择项目后会带入该项目的默认设置。新会话保留已有历史，其他会话不受影响。</p>
+    <p id="session-form-error" class="inline-error" role="alert" hidden></p>
+    <div class="modal-actions"><button class="btn btn-line modal-close" type="button">取消</button><button id="create-session-submit" class="btn btn-primary" type="submit">创建会话</button></div>
+  </form></dialog>
+
+  <dialog id="project-dialog" class="modal" aria-labelledby="project-dialog-title"><form id="project-form" method="dialog">
+    <div class="modal-heading"><div><span class="eyebrow">项目</span><h2 id="project-dialog-title">新建项目</h2></div><button class="icon-btn modal-close" type="button" aria-label="关闭项目设置"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <label class="form-field">项目名称<input id="project-name" required maxlength="60" placeholder="例如 本地资料检索工具" autocomplete="off"></label>
+    <fieldset class="form-field"><legend>颜色</legend><div id="project-colors" class="color-row" role="radiogroup" aria-label="项目颜色"></div></fieldset>
+    <label class="form-field">项目说明<textarea id="project-description" maxlength="400" rows="2" placeholder="目标、约定或需要长期记住的信息（只在面板中显示）"></textarea></label>
+    <details class="form-details" id="project-defaults-box"><summary>新会话默认设置</summary>
+      <div class="form-grid">
+        <label class="form-field">协作模式<select id="project-mode"><option value="">沿用全局默认</option><option value="leader">主导协作</option><option value="roundtable">圆桌讨论</option></select></label>
+        <label class="form-field">主导成员<select id="project-lead"><option value="">沿用全局默认</option></select></label>
+      </div>
+      <fieldset class="form-field participants-field"><legend>参与成员</legend><div id="project-participants" class="check-row"></div></fieldset>
+      <label class="form-field switch-field"><span>全局协作上下文</span><span class="switch"><input id="project-shared" type="checkbox"><span aria-hidden="true"></span></span></label>
+    </details>
+    <p id="project-form-error" class="inline-error" role="alert" hidden></p>
+    <div class="modal-actions"><button class="btn btn-danger-line" id="project-delete" type="button" hidden>删除项目</button><span class="sp"></span><button class="btn btn-line modal-close" type="button">取消</button><button id="project-save" class="btn btn-primary" type="submit">创建项目</button></div>
+  </form></dialog>
+
+  <dialog id="skills-dialog" class="modal wide" aria-labelledby="skills-title">
+    <div class="modal-heading"><div><span class="eyebrow">连接你的协作伙伴</span><h2 id="skills-title">智能体接入指南</h2></div><button class="icon-btn modal-close" type="button" aria-label="关闭接入指南"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <p class="modal-hint">选择成员，把下方说明复制到对应客户端的独立对话中。说明由本地服务生成。</p>
+    <div id="skill-tabs" class="skill-tabs" role="tablist" aria-label="智能体接入说明"></div>
+    <div id="skill-content" role="tabpanel"><div class="skill-code-heading"><span id="skill-name"></span><button id="copy-skill" class="text-button" type="button">复制接入说明</button></div><pre id="skill-code" class="code-view" tabindex="0"></pre><p id="skill-error" class="inline-error" role="alert" hidden></p></div>
+    <div class="modal-bottom"><span>接入后等待成员报到与读取。</span><a href="/guide" target="_blank" rel="noopener">阅读完整协议</a></div>
+  </dialog>
+
+  <dialog id="finish-dialog" class="modal" aria-labelledby="finish-title"><form id="finish-form" method="dialog">
+    <div class="modal-heading"><h2 id="finish-title">结束当前会话？</h2><button class="icon-btn modal-close" type="button" aria-label="关闭结束确认"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <p class="modal-hint">会向成员发送结束信号：停止新工作、释放文件占用并确认。记录会保留，仍可查看和导出。</p>
+    <p id="finish-error" class="inline-error" role="alert" hidden></p>
+    <div class="modal-actions"><button class="btn btn-line modal-close" type="button">继续协作</button><button id="confirm-finish" class="btn btn-danger" type="submit" disabled>结束会话</button></div>
+  </form></dialog>
+
+  <dialog id="context-dialog" class="modal wide" aria-labelledby="context-title">
+    <div class="modal-heading"><div><span class="eyebrow">按需读取 · 来源可查</span><h2 id="context-title">成员上下文预览</h2></div><button class="icon-btn modal-close" type="button" aria-label="关闭上下文预览"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <label class="form-field">查看成员<select id="context-agent"></select></label>
+    <p class="modal-hint" id="context-preview-meta">读取当前成员可见的摘要。</p>
+    <pre class="code-view context-preview" id="context-preview" tabindex="0"></pre>
+    <p id="context-preview-error" class="inline-error" role="alert" hidden></p>
+    <button id="context-next" class="text-button" type="button" hidden>下一页任务摘要</button>
+    <p class="modal-hint">人工面板保留完整记录。开关控制成员之后的读取范围，已进入客户端的内容无法撤回。</p>
+  </dialog>
+
+  <dialog id="instances-dialog" class="modal wide" aria-labelledby="instances-title">
+    <div class="modal-heading"><div><span class="eyebrow">同客户端 · 多窗口 · 独立分工</span><h2 id="instances-title">协作实例</h2></div><button class="icon-btn modal-close" type="button" aria-label="关闭协作实例"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <p class="modal-hint">可以为 Codex、Claude、Reasonix、ZCode 登记多个实例，每个实例在独立的客户端对话中接入。这里不打开客户端、不切换模型，也不调用模型。</p>
     <div id="instance-list" class="instance-list" aria-label="本会话实例列表"></div>
     <form id="instance-form" class="instance-form">
       <div class="instance-form-heading"><h3 id="instance-editor-title">新增实例</h3><button id="instance-new" class="text-button" type="button">新增另一个实例</button></div>
-      <div class="instance-fields">
+      <div class="form-grid">
         <label class="form-field">客户端类型<select id="instance-client"><option value="codex">Codex</option><option value="claude">Claude Code</option><option value="reasonix">Reasonix</option><option value="zcode">ZCode</option></select></label>
         <label class="form-field">实例名称<input id="instance-name" required maxlength="60" placeholder="例如 Codex 协同 1"></label>
-        <label class="form-field">模型标注<input id="instance-model" maxlength="100" placeholder="填写该窗口选择的模型，例如 gpt6"></label>
+        <label class="form-field">模型标注<input id="instance-model" maxlength="100" placeholder="该窗口选择的模型，例如 gpt6"></label>
         <label class="form-field">协作角色<select id="instance-role"><option value="worker">协同者</option><option value="lead">主导者</option><option value="reviewer">验收者</option></select></label>
       </div>
-      <p class="modal-hint">主导者每个会话一位，选择主导会更新主导身份。原任务归属保留，不会自动转交。模型字段仅为标注，实际可用性和选择以客户端为准。</p>
+      <p class="modal-hint">每个会话只有一位主导者，设为主导会更新主导身份，原任务归属不变。模型字段只是标注，实际模型在客户端选择。</p>
       <p id="instance-stale" class="inline-error" hidden>实例或参与设置已有变化。请重新点击“编辑”或“新增另一个实例”读取最新设置。</p>
       <p id="instance-error" class="inline-error" role="alert" hidden></p><p id="instance-result" class="instance-result" role="status" hidden></p>
-      <div class="modal-actions"><button id="instance-save" type="submit" class="button button-primary">创建实例</button></div>
+      <div class="modal-actions"><button id="instance-save" type="submit" class="btn btn-primary">创建实例</button></div>
     </form>
   </dialog>
-  <dialog id="focus-dialog" class="modal focus-modal" aria-label="放大对话阅读"></dialog>
-  <dialog id="observatory-dialog" class="modal observatory" aria-labelledby="observatory-title">
-    <div class="observatory-header"><div><span class="eyebrow">共享记录 · 实时观察</span><h2 id="observatory-title">协作观察窗</h2><p id="observatory-session"></p></div><div class="panel-actions"><span id="observatory-status" role="status"></span><button class="icon-button modal-close" type="button" aria-label="关闭协作观察窗">×</button></div></div>
-    <div class="observatory-tabs" role="tablist" aria-label="协作视图"><button id="team-tab" type="button" role="tab" aria-selected="true" aria-controls="team-view">◎ 全员对话</button><button id="workflow-tab" type="button" role="tab" aria-selected="false" aria-controls="workflow-view" tabindex="-1">⑂ 协作工作树</button><button id="observatory-intervene" class="text-button" type="button">提出要求 ↗</button></div>
-    <section id="team-view" class="observation-view team-view" role="tabpanel" aria-labelledby="team-tab">
-      <div id="team-stage" class="team-stage" aria-label="各成员最近共享动态"></div>
-      <div class="team-toolbar"><span id="team-meta"></span><label><input id="team-follow" type="checkbox" checked> 跟随新消息</label><button id="team-latest" class="text-button" type="button">回到最新 ↓</button></div>
-      <div id="team-scroll" class="message-scroll" tabindex="0" aria-label="全员共享对话"><div class="history-loader"><button id="team-older" class="text-button" type="button">加载更早消息</button></div><div id="team-messages"></div><p id="team-empty" class="observation-empty" hidden>当前会话还没有共享消息。成员接入并发布后将在这里汇合。</p></div>
-      <p class="observation-note">显示已发布到看板的消息，包含定向消息和人工要求，不受主面板筛选影响。客户端内部对话不会自动同步；此窗口不改变 agent 的上下文读取权限。</p>
-    </section>
-    <section id="workflow-view" class="observation-view workflow-view" role="tabpanel" aria-labelledby="workflow-tab" hidden>
-      <div class="workflow-toolbar"><div><strong>派发 → 执行 → 独立验收 → 整合</strong><p id="workflow-meta"></p></div><label class="search-field"><input id="workflow-search" type="search" placeholder="搜索任务、成员或编号" aria-label="搜索工作树"></label></div>
-      <div id="workflow-scroll" tabindex="0" aria-label="实时任务工作树"><div id="workflow-tree"></div></div>
-      <p class="observation-note">分层依据正式 depends_on，依赖编号可定位上下游。预定验收依据 reviewer，实际验收依据 review。整合节点需主导显式标记 stage=integration，缺失信息显示“未指定”。这里只读协作流程，不创建 Git worktree。</p>
-    </section>
+
+  <dialog id="snapshot-dialog" class="modal" aria-labelledby="snapshot-title">
+    <div class="modal-heading"><h2 id="snapshot-title">把这张画面附加到消息？</h2><button class="icon-btn modal-close" type="button" aria-label="关闭截图确认"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <p class="modal-hint" id="snapshot-meta"></p>
+    <img class="snapshot-preview" id="snapshot-image" alt="画面截图预览">
+    <div class="privacy-note"><svg class="i sm"><use href="#i-shield"/></svg><span>画面可能包含密钥、个人信息或其他窗口内容。确认后会上传为附件，成员按各自的读取范围可以看到。</span></div>
+    <p id="snapshot-error" class="inline-error" role="alert" hidden></p>
+    <div class="modal-actions"><button class="btn btn-line modal-close" type="button">取消</button><button id="snapshot-confirm" class="btn btn-primary" type="button">上传并附加</button></div>
   </dialog>
+
+  <dialog id="confirm-dialog" class="modal" aria-labelledby="confirm-title">
+    <div class="modal-heading"><h2 id="confirm-title"></h2><button class="icon-btn modal-close" type="button" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <p class="modal-hint" id="confirm-text"></p>
+    <div class="modal-actions"><button class="btn btn-line modal-close" type="button">取消</button><button id="confirm-ok" class="btn btn-danger" type="button">确认</button></div>
+  </dialog>
+
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="false"></div>
 </body>
 </html>

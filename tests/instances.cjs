@@ -1,15 +1,16 @@
 // Same-client instance management and collaboration against an isolated real server.
 const fs=require('fs'),os=require('os'),path=require('path'),assert=require('assert/strict');
 const {spawn,spawnSync}=require('child_process');
-const {chromium, python, launchOptions}=require('./support.cjs');
+const {chromium, python, launchOptions, waitForServer, stopServer}=require('./support.cjs');
 const root=path.resolve(__dirname,'..'),data=fs.mkdtempSync(path.join(os.tmpdir(),'agents-talk-instance-ui-'));
 const env={...process.env,AGENTS_TALK_DATA:data,AGENTS_TALK_CONFIG:path.join(root,'config.example.json'),PYTHONUTF8:'1',PYTHONDONTWRITEBYTECODE:'1'};
 const base='http://127.0.0.1:18767',shots=path.join(root,'.runtime');let server,browser;
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 function start(){server=spawn(python,[path.join(root,'hub.py'),'serve','--port','18767','--no-open'],{env,windowsHide:true,stdio:'pipe'});}
-async function stop(){if(server&&!server.killed&&server.exitCode===null){const ended=new Promise(r=>server.once('exit',r));server.kill();await ended;}}
-async function ready(){for(let i=0;i<100;i++){if(server.exitCode!==null)throw Error('isolated server exited');try{const r=await fetch(base+'/api/state');await r.arrayBuffer();if(r.ok)return;}catch{}await delay(100);}throw Error('timeout');}
+const stop=()=>stopServer(server);
+const ready=()=>waitForServer(server,base);
 async function state(sid='main'){return (await fetch(base+'/api/state?session='+sid)).json();}
+const sideTab=(page,tab)=>page.evaluate(tab=>openSideTab(tab),tab);
 async function action(data){const st=await state(data.session||'main');const r=await fetch(base+'/api/session',{method:'POST',headers:{'Content-Type':'application/json','X-Agents-Token':st.csrf},body:JSON.stringify(data)});const result=await r.json();assert(r.ok,JSON.stringify(result));return result;}
 function post(who,type,...args){const r=spawnSync(python,[path.join(root,'hub.py'),'post','--from',who,'--session','main','--type',type,...args],{env,encoding:'utf8',windowsHide:true});assert.equal(r.status,0,r.stderr);return JSON.parse(r.stdout);}
 (async()=>{
@@ -18,6 +19,7 @@ function post(who,type,...args){const r=spawnSync(python,[path.join(root,'hub.py
   const page=await browser.newPage({viewport:{width:1600,height:1050},reducedMotion:'reduce'}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base);await page.waitForFunction(()=>!document.querySelector('#instances-open').disabled);
+  await sideTab(page,'members');
   const settled=()=>page.waitForFunction(()=>!document.querySelector('#instance-save').disabled&&!document.querySelector('#instance-result').hidden);
   async function fill(label,role='worker',client='codex'){
    await page.selectOption('#instance-client',client);await page.locator('#instance-name').fill(label);
@@ -61,7 +63,7 @@ function post(who,type,...args){const r=spawnSync(python,[path.join(root,'hub.py
   post(reviewer,'say','--to','codex','--body','验收实例：等待交付证据。');
   await page.waitForFunction(id=>document.querySelector(`#messages [data-sender="${id}"]`),worker);
   assert(!(await page.locator(`#messages [data-sender="${worker}"] .avatar`).first().textContent()).includes('?'));
-  await page.locator('#context-preview-open').click();await page.selectOption('#context-agent',worker);
+  await sideTab(page,'members');await page.locator('#context-preview-open').click();await page.selectOption('#context-agent',worker);
   await page.waitForFunction(()=>document.querySelector('#context-preview').textContent.includes('CODE'));
   assert(!(await page.locator('#context-preview').textContent()).includes('PRIVATE_OTHER_CODEX_CONTEXT'));
   await page.locator('#context-dialog .modal-close').click();
@@ -69,10 +71,12 @@ function post(who,type,...args){const r=spawnSync(python,[path.join(root,'hub.py
   await page.locator('#workflow-open').click();
   await page.waitForFunction(()=>document.querySelector('[data-flow-task="CODE"]').dataset.state==='已完成');
   const flow=await page.locator('[data-flow-task="CODE"]').textContent();assert(flow.includes(worker)&&flow.includes(reviewer)&&flow.includes('gpt6'));
-  await page.locator('#team-tab').click();assert.equal(await page.locator('[data-stage-agent]').count(),6);
-  assert((await page.locator(`[data-stage-agent="${worker}"]`).textContent()).includes('gpt6'));
+  await page.locator('#live-open').click();
+  assert.equal(await page.locator('#agent-list [data-member]').count(),6);
+  assert((await page.locator(`#agent-list [data-member="${worker}"]`).textContent()).includes('gpt6'));
+  assert.equal(await page.locator('#stage-grid [data-tile]').count(),5,'the stage shows participating instances only');
+  assert((await page.locator(`#stage-grid [data-tile="${worker}"]`).textContent()).includes('gpt6'));
   await page.screenshot({path:path.join(shots,'same-client-team-qa.png')});
-  await page.keyboard.press('Escape');
   for(const aid of ['codex',worker,reviewer])post(aid,'usage','--usage-id','same-native-number','--input-tokens','10','--output-tokens','5','--provider','fixture','--model','actual-usage-model','--usage-source','isolated fixture');
   await page.waitForFunction(()=>document.querySelector('#usage-total').textContent==='45');
   assert.equal(await page.locator(`#usage-list [data-usage-agent="${worker}"] .usage-heading>b`).textContent(),'15');
@@ -92,9 +96,10 @@ function post(who,type,...args){const r=spawnSync(python,[path.join(root,'hub.py
   assert(await page.locator('#instances-dialog').evaluate(e=>e.scrollWidth<=e.clientWidth+1));
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.locator('#instances-dialog .modal-close').click();
-  await page.locator('#team-open').click();await page.screenshot({path:path.join(shots,'same-client-team-mobile-qa.png')});
-  assert((await page.locator('#team-scroll').boundingBox()).height>100);
-  await page.keyboard.press('Escape');await page.setViewportSize({width:1600,height:1050});
+  await page.locator('#mobile-tabs [data-m="members"]').click();await page.screenshot({path:path.join(shots,'same-client-team-mobile-qa.png')});
+  assert((await page.locator('#agent-list').boundingBox()).height>100);
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.setViewportSize({width:1600,height:1050});await sideTab(page,'members');
   await page.locator(`[data-participant="${worker}"]`).uncheck();
   await page.waitForFunction(id=>document.querySelector(`#recipient-select option[value="${id}"]`).disabled,worker);
   assert(!(await state()).session.participants.includes(worker));assert((await state()).session.participants.includes(reviewer));
@@ -117,7 +122,7 @@ function post(who,type,...args){const r=spawnSync(python,[path.join(root,'hub.py
   assert.equal(await page.locator('#instance-list [data-instance]').count(),4);
   assert.equal(await page.locator(`#recipient-select option[value="${delayed.instance}"]`).count(),0);
   await page.unroute('**/api/session',hold);
-  await page.locator('#instances-dialog .modal-close').click();await page.selectOption('#usage-scope','all');
+  await page.locator('#instances-dialog .modal-close').click();await sideTab(page,'members');await page.selectOption('#usage-scope','all');
   assert.equal(await page.locator('#usage-total').textContent(),'45');assert.equal(await page.locator(`#usage-list [data-usage-agent="${worker}"]`).count(),1);
   await page.locator('#finish-session').click();await page.locator('#confirm-finish').click();await page.waitForFunction(()=>document.querySelector('#session-status').textContent==='已结束');
   await page.locator('#instances-open').click();assert(await page.locator('#instance-save').isDisabled());

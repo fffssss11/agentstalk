@@ -11,27 +11,43 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN = {'config.json', 'board.jsonl', '.hub.lock', '.seen', '.presence', '.listeners',
-             '.bindings', 'uploads', 'workspace', '.runtime', '.backups', 'dist', 'node_modules',
+             '.bindings', '.library.json', 'uploads', 'workspace', '.runtime', '.backups', 'dist', 'node_modules',
              '__pycache__', '.git', '.env', 'python-path.txt', '.agents-talk-install.json'}
+# Release archives and their single top-level folder are named agentstalk-VERSION.
+ARCHIVE_NAME = 'agentstalk'
+VERSION_PATTERN = r'(\d+)\.(\d+)\.(\d+)(?:-([a-z0-9]+(?:\.[a-z0-9]+)*))?'
+
+
+def version_key(text):
+    """SemVer precedence, so 1.0.0-rc.2 < 1.0.0-rc.10 < 1.0.0 < 1.0.1."""
+    match = re.fullmatch(VERSION_PATTERN, text)
+    if not match: raise ValueError('Invalid version: ' + str(text))
+    core = tuple(int(part) for part in match.groups()[:3])
+    if match.group(4) is None: return core + ((1,),)
+    return core + ((0, *((0, int(p), '') if p.isdigit() else (1, 0, p) for p in match.group(4).split('.'))),)
 
 
 def inventory(root):
     root = root.resolve()
     paths = json.loads((root / 'release-files.json').read_text(encoding='utf-8'))
-    if not isinstance(paths, list) or not paths or len(paths) != len(set(paths)):
+    if not isinstance(paths, list) or not paths or not all(isinstance(p, str) for p in paths) or len(paths) != len(set(paths)):
         raise ValueError('Release allowlist must be a nonempty array of unique relative paths')
+    if len(paths) != len({p.casefold() for p in paths}):
+        raise ValueError('Release paths must be unique on case-insensitive filesystems')
     entries = {}
     for name in sorted(paths):
         relative = PurePosixPath(name)
-        if not isinstance(name, str) or relative.is_absolute() or '..' in relative.parts or '\\' in name or ':' in name or str(relative) != name:
+        if relative.is_absolute() or '..' in relative.parts or '\\' in name or ':' in name or str(relative) != name:
             raise ValueError('Unsafe release path: ' + str(name))
-        if any(p in FORBIDDEN or p.startswith('.env.') for p in relative.parts):
+        if name.casefold() == 'source-manifest.json':
+            raise ValueError('SOURCE-MANIFEST.json is a generated manifest, not an input source')
+        if any(p.casefold() in FORBIDDEN or p.casefold().startswith('.env.') for p in relative.parts):
             raise ValueError('Private/runtime file in allowlist: ' + name)
         path = root / name
         if not path.is_file() or path.resolve() != path:
             raise ValueError('Missing or linked source: ' + name)
         content = path.read_bytes()
-        if path.suffix.lower() not in ('.png', '.jpg'):
+        if path.suffix.lower() not in ('.png', '.jpg', '.ico'):
             text = content.decode('utf-8-sig')
             personal = [str(Path.home()), str(root)]
             normalized = text.replace('\\', '/').lower()
@@ -41,7 +57,7 @@ def inventory(root):
             home_pattern = r"(?:[A-Za-z]:/Users/|/Users/|/home/)" + user_component + r"/"
             if re.search(home_pattern, re.sub(r'/+', '/', text.replace('\\', '/')), re.IGNORECASE):
                 raise ValueError('Personal home path in source: ' + name)
-            if re.search(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bgh[pousr]_[A-Za-z0-9]{30,}|\bsk-[A-Za-z0-9_-]{30,}', text):
+            if re.search(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}|\bsk-[A-Za-z0-9_-]{30,}', text):
                 raise ValueError('Possible credential in source: ' + name)
         entries[name] = content
     return entries
@@ -50,7 +66,7 @@ def inventory(root):
 def build(root, output=None, allow_unlicensed=False):
     entries = inventory(root)
     version = entries['VERSION'].decode().strip()
-    if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[a-z0-9.]+)?', version): raise ValueError('Invalid VERSION')
+    if not re.fullmatch(VERSION_PATTERN, version): raise ValueError('Invalid VERSION')
     package = json.loads(entries['package.json'])
     lockfile = json.loads(entries['package-lock.json'])
     if package['version'] != version or lockfile['version'] != version or lockfile['packages']['']['version'] != version:
@@ -72,7 +88,7 @@ def build(root, output=None, allow_unlicensed=False):
     with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         all_entries = {**entries, 'SOURCE-MANIFEST.json': (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode()}
         for name, content in sorted(all_entries.items()):
-            info = zipfile.ZipInfo('agents-talk-' + version + '/' + name, date_time=(2020, 1, 1, 0, 0, 0))
+            info = zipfile.ZipInfo(ARCHIVE_NAME + '-' + version + '/' + name, date_time=(2020, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.create_system = 3
             info.external_attr = 0o100644 << 16
@@ -94,7 +110,7 @@ def main():
     args = parser.parse_args()
     try:
         version = (ROOT / 'VERSION').read_text().strip()
-        out = None if args.check else args.output or ROOT / 'dist' / ('agents-talk-' + version + '.zip')
+        out = None if args.check else args.output or ROOT / 'dist' / (ARCHIVE_NAME + '-' + version + '.zip')
         result = build(ROOT, out, args.allow_unlicensed)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0

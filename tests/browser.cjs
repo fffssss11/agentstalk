@@ -4,18 +4,23 @@ const os = require('os');
 const path = require('path');
 const assert = require('assert/strict');
 const {spawn, spawnSync} = require('child_process');
-const {chromium, python, launchOptions}=require('./support.cjs');
+const {chromium, python, launchOptions, waitForServer, stopServer}=require('./support.cjs');
 const root = path.resolve(__dirname,'..');
 const data = fs.mkdtempSync(path.join(os.tmpdir(),'agents-talk-browser-'));
 const screenshots = path.join(root,'.runtime');
 fs.mkdirSync(screenshots,{recursive:true});
 const env = {...process.env,AGENTS_TALK_DATA:data,AGENTS_TALK_CONFIG:path.join(root,'config.example.json'),PYTHONUTF8:'1',PYTHONDONTWRITEBYTECODE:'1'};
 const port = 18765, base = 'http://127.0.0.1:'+port;
+// Panel assets come from the server allowlist; the mock route serves exactly those files.
+const assets = JSON.parse(spawnSync(python,['-c','import json,hub;print(json.dumps(sorted(hub.WEB_FILES)))'],{cwd:root,env,encoding:'utf8',windowsHide:true}).stdout);
 let server, browser;
 function start() { server=spawn(python,[path.join(root,'hub.py'),'serve','--port',String(port),'--no-open'],{env,windowsHide:true,stdio:'pipe'}); }
-async function ready() {for(let i=0;i<80;i++){if(server.exitCode!==null)throw Error('Test server exited; the test port may be occupied');try{const r=await fetch(base+'/api/state');await r.arrayBuffer();if(r.ok)return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Test server did not start');}
-async function stop(){if(server&&!server.killed){server.kill();await new Promise(resolve=>server.once('exit',resolve));}}
+const ready=()=>waitForServer(server,base);
+const stop=()=>stopServer(server);
 function post(who,type,...args) {const r=spawnSync(python,[path.join(root,'hub.py'),'post','--from',who,'--session','main','--type',type,...args],{env,encoding:'utf8',windowsHide:true});assert.equal(r.status,0,r.stderr);return JSON.parse(r.stdout);}
+const openSettings=page=>page.evaluate(()=>openSettings('collab'));
+const closeSettings=page=>page.evaluate(()=>closeSettings({restoreFocus:false}));
+const sideTab=(page,tab)=>page.evaluate(tab=>openSideTab(tab),tab);
 
 // All race fixtures live in memory. Every request on this page is intercepted;
 // no mock message reaches either the isolated server or a real board.
@@ -57,7 +62,7 @@ async function raceTests(browser) {
     try {
       if(!url.pathname.startsWith('/api/')) {
         const file=url.pathname==='/'?'index.html':url.pathname.slice(1);
-        assert(['index.html','app.js','style.css','observatory.css'].includes(file),'Unexpected asset '+file);
+        assert(assets.includes(file),'Unexpected asset '+file);
         return await route.fulfill({body:fs.readFileSync(path.join(root,'web',file)),contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});
       }
       const req=route.request(),entry={pathname:url.pathname,query:url.searchParams,method:req.method(),token:req.headers()['x-agents-token'],body:url.pathname==='/api/upload'?null:req.postDataJSON()};
@@ -81,6 +86,13 @@ async function raceTests(browser) {
     assert.equal(await page.locator('option[value="pi"], [data-participant="pi"]').count(),0);
     assert.equal(await page.locator('[data-participant="zcode"]').isChecked(),false);
     await page.locator('#message-body').fill('draft a');
+    const beforeComposition=writes();
+    await page.locator('#message-body').dispatchEvent('keydown',{key:'Enter',ctrlKey:true,isComposing:true});
+    await page.locator('#message-body').dispatchEvent('keydown',{key:'Enter',metaKey:true,keyCode:229});
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+    assert.equal(await page.locator('#message-body').inputValue(),'draft a','IME confirmation must preserve the unsent draft');
+    assert.equal(writes(),beforeComposition,'IME confirmation must never publish a message');
+    console.log('PASS input: composing Ctrl/Meta + Enter does not publish unfinished text');
 
     const old=hold(r=>r.pathname==='/api/state'&&r.query.get('session')==='a');await refresh();await old.arrived();
     await select('b');await page.locator('#message-body').fill('draft b');
@@ -132,6 +144,7 @@ async function raceTests(browser) {
     await select('a');assert.equal(await page.locator('.pending-attachment').count(),2);
     console.log('PASS race: upload snapshots, batch token, attachment and lock isolation');
 
+    await openSettings(page);
     const staleState=hold(r=>r.pathname==='/api/state'&&r.query.get('session')==='a');await refresh();await staleState.arrived();
     const freshState=hold(r=>r.pathname==='/api/state'&&r.query.get('session')==='a');
     await page.selectOption('#mode-select','roundtable');await freshState.arrived();
@@ -148,6 +161,7 @@ async function raceTests(browser) {
     await page.selectOption('#lead-select','codex');await settingB.arrived();await settingA.release();
     assert.equal(await page.locator('#lead-select').isDisabled(),true);assert.equal(await page.locator('#shared-context').isChecked(),false);
     await settingB.release();await idle();assert.equal(await page.locator('#lead-select').inputValue(),'codex');
+    await closeSettings(page);
     console.log('PASS race: fresh post-write sync, settings exclusion, field patches and session snapshots');
 
     await select('a');await page.locator('#message-body').fill('failed send a');
@@ -170,10 +184,12 @@ async function raceTests(browser) {
     await page.locator('#skills-open').click();await guide.arrived();await page.locator('#skills-dialog .modal-close').click();await select('b');
     await page.locator('#skills-open').click();await page.waitForFunction(()=>document.querySelector('#skill-code').textContent.includes('Guide b'));
     await guide.release();assert((await page.locator('#skill-code').textContent()).includes('Guide b'));await page.locator('#skills-dialog .modal-close').click();
+    await sideTab(page,'members');
     const context=hold(r=>r.pathname==='/api/context',{status:500,json:{error:'old context failure'}});
     await page.locator('#context-preview-open').click();await context.arrived();await page.locator('#context-dialog .modal-close').click();await select('a');
     await page.locator('#context-preview-open').click();await page.waitForFunction(()=>document.querySelector('#context-preview').textContent.includes('"fixture": "a"'));
     await context.release();assert.equal(await page.locator('#context-preview-error').isHidden(),true);await page.locator('#context-dialog .modal-close').click();
+    await sideTab(page,'chat');
     console.log('PASS race: stale skill and context responses');
 
     const createFailure=hold(r=>r.pathname==='/api/session'&&r.body.action==='create',{status:500,json:{error:'create retry fixture'}});
@@ -198,18 +214,51 @@ async function raceTests(browser) {
     assert.equal(await page.locator('[data-reassign="LEGACY"]').isDisabled(),true);
     assert.equal(await page.locator('#lead-select').inputValue(),'');
     await page.locator('#tab-media').click();assert.equal(await page.locator('#send-button').isDisabled(),true);
-    await page.selectOption('#lead-select','codex');await idle();assert.equal(await page.locator('#migration-warning').isHidden(),true);
+    await openSettings(page);await page.selectOption('#lead-select','codex');await idle();assert.equal(await page.locator('#migration-warning').isHidden(),true);
+    await closeSettings(page);
     tasks.get('a')[0].waiting_for=[];tasks.get('a')[0].ready=true;revision++;await refresh();
     await page.waitForFunction(()=>document.querySelector('.task-dependencies').textContent.includes('依赖已满足'));
     await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     assert.deepEqual(errors,[]);console.log('PASS race: historical Pi, ZCode selectors, migration, dependency status, narrow layout');
   } finally {for(const gate of gates)gate.release.resolve();await page.close();}
 }
+async function storageTests(browser) {
+  for(const failure of ['denied','quota']) {
+    const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];
+    let posts=0;
+    page.on('pageerror',e=>errors.push(e.message));
+    await page.addInitScript(failure=>{
+      if(failure==='denied')Storage.prototype.getItem=()=>{throw new DOMException('Storage fixture','SecurityError');};
+      Storage.prototype.setItem=()=>{throw new DOMException('Storage fixture',failure==='denied'?'SecurityError':'QuotaExceededError');};
+    },failure);
+    // The real isolated server provides state, while this write is fulfilled in
+    // memory so the following integration scenario still starts with no messages.
+    await page.route('**/api/post',route=>{posts++;return route.fulfill({json:{id:'storage-fixture'}});});
+    try {
+      await page.goto(base);await page.waitForFunction(()=>!document.querySelector('#send-button').disabled);
+      await page.locator('#mobile-tabs [data-m="chat"]').click();
+      assert(await page.locator('#draft-storage-notice').isVisible());
+      assert(await page.locator('#connection-error').isHidden(),'storage failures must not masquerade as disconnection');
+      await page.locator('#message-body').fill('仅在当前页面保留的草稿');
+      await page.evaluate(()=>switchSession(''));
+      await page.waitForFunction(()=>!document.querySelector('#send-button').disabled);
+      assert.equal(await page.locator('#message-body').inputValue(),'仅在当前页面保留的草稿');
+      await page.locator('#message-body').press('Control+Enter');
+      await page.waitForFunction(()=>document.querySelector('#message-body').value===''&&!document.querySelector('#send-button').disabled);
+      assert.equal(posts,1);assert(await page.locator('#composer-error').isHidden());
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+      await page.locator('#conversation').screenshot({path:path.join(screenshots,'storage-'+failure+'-mobile-qa.png')});
+      assert.deepEqual(errors,[]);
+    } finally {await page.close();}
+  }
+  console.log('PASS storage: denied access and exhausted quota keep startup, sync, in-memory drafts and successful sends working');
+}
 (async()=>{
   try {
     start(); await ready();
     browser=await chromium.launch(launchOptions);
     await raceTests(browser);
+    await storageTests(browser);
     const page=await browser.newPage({viewport:{width:1440,height:1000}});
     const errors=[]; page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base); await page.waitForFunction(()=>!document.querySelector('#send-button').disabled);
@@ -217,6 +266,7 @@ async function raceTests(browser) {
     assert(await page.locator('#reader-warning').evaluate(el=>el.classList.contains('onboarding-notice')));
     assert.equal(await page.locator('[data-participant="zcode"]').isChecked(),false);
     assert.equal(await page.locator('#recipient-select option[value="zcode"]').evaluate(el=>el.disabled),true);
+    await sideTab(page,'members');
     await page.locator('[data-participant="zcode"]').check();
     await page.waitForFunction(()=>!document.querySelector('#recipient-select option[value="zcode"]').disabled);
     await page.reload();await page.waitForFunction(()=>!document.querySelector('#send-button').disabled);
@@ -226,6 +276,7 @@ async function raceTests(browser) {
     post('codex','usage','--usage-id','browser-request-1','--input-tokens','1000','--output-tokens','300','--provider','fixture','--model','fixture-model','--usage-source','isolated browser test response');
     post('codex','usage','--usage-id','browser-request-1','--input-tokens','1000','--output-tokens','300','--provider','fixture','--model','fixture-model','--usage-source','isolated browser test response');
     await page.waitForFunction(()=>document.querySelector('#usage-total').textContent==='1,300');
+    assert.equal(await page.locator('#usage-chip-total').textContent(),'1,300');
     assert((await page.locator('[data-usage-agent="reasonix"]').textContent()).includes('未报告'));
     post('reasonix','say','--body','建议先验证输入边界，再开展实现。');
     post('zcode','join','--body','负责独立检查交付内容。');
@@ -244,8 +295,10 @@ async function raceTests(browser) {
     fs.writeFileSync(presencePath,JSON.stringify(presence));
     await page.waitForFunction(()=>document.querySelector('#reader-warning-text').textContent.includes('超过 120 秒未读取'));
     post('claude','task','--task','ZCODE-TODO','--to','zcode','--body','检查未参与成员的旧待办转交');
+    await sideTab(page,'members');
     await page.locator('[data-participant="zcode"]').uncheck();
     await page.waitForFunction(()=>document.querySelector('#recipient-select option[value="zcode"]').disabled);
+    await sideTab(page,'tasks');
     await page.locator('[data-reassign="ZCODE-TODO"]').click();
     await page.waitForFunction(()=>!document.querySelector('[data-reassign="ZCODE-TODO"]'));
     assert.equal((await (await fetch(base+'/api/state')).json()).tasks.find(t=>t.id==='ZCODE-TODO').owner,'claude');
@@ -260,22 +313,29 @@ async function raceTests(browser) {
     post('claude','review','--task','DEP-PRE','--verdict','pass','--body','前置审查通过');
     await page.waitForFunction(()=>document.querySelector('[data-task="DEP-NEXT"] .task-dependencies')?.textContent.includes('依赖已满足'));
     assert.equal(await page.locator('#shared-context').isChecked(),false);
+    await sideTab(page,'members');
     await page.locator('#context-preview-open').click();
     await page.waitForFunction(()=>document.querySelector('#context-preview').textContent.includes('CTX-OWN'));
     assert(!(await page.locator('#context-preview').textContent()).includes('CTX-PEER'));
     await page.locator('#context-dialog .modal-close').click();
+    await openSettings(page);
     await page.locator('#shared-context').check();
     await page.waitForFunction(()=>document.querySelector('#context-mode-label').textContent.includes('开启'));
     await page.reload();await page.waitForFunction(()=>!document.querySelector('#shared-context').disabled);
     assert.equal(await page.locator('#shared-context').isChecked(),true);
+    await sideTab(page,'members');
     await page.locator('#context-preview-open').click();
     await page.waitForFunction(()=>document.querySelector('#context-preview').textContent.includes('CTX-PEER'));
     await page.locator('#context-dialog .modal-close').click();
+    await openSettings(page);
     await page.locator('#shared-context').uncheck();
     await page.waitForFunction(()=>document.querySelector('#context-mode-label').textContent.includes('关闭'));
+    await closeSettings(page);await sideTab(page,'chat');
     await page.locator('#message-body').fill('保留历史，优先验证文件冲突。<script>window.bad=true</script>');
-    await page.selectOption('#message-type','intervention'); await page.locator('#send-button').click();
+    await page.locator('#intervene-toggle').click(); await page.locator('#send-button').click();
     await page.waitForFunction(()=>document.querySelector('#messages').textContent.includes('保留历史'));
+    assert.equal(await page.locator('#intervene-toggle').getAttribute('aria-pressed'),'false','intervention mode resets after sending');
+    await page.waitForSelector('#pinned .pinned');
     let st=await (await fetch(base+'/api/state')).json();const intervention=st.messages.find(m=>m.type==='intervention');
     post('codex','ack','--reply-to',intervention.id,'--body','收到，先检查并发占用规则。');
     await page.waitForFunction(()=>[...document.querySelectorAll('.receipt')].some(n=>n.textContent.includes('Codex 已确认')));
@@ -296,11 +356,22 @@ async function raceTests(browser) {
     await page.waitForFunction(()=>document.querySelector('#attachment-list img'));
     await page.locator('#message-body').fill('参考图已附上。');await page.locator('#send-button').click();
     await page.waitForSelector('#messages .attachment-media');
+    await page.locator('#search-toggle').click();
     await page.locator('#search-input').fill('保留历史');assert.equal(await page.locator('#messages article').count(),1);
     await page.locator('#clear-filters').click();
+    // Summary/detail display: one event expands on click; "详细" expands all.
+    const last=page.locator('#messages article').last();
+    assert.equal(await last.getAttribute('data-open'),'false');
+    await last.locator('.msg-line').click();assert.equal(await last.getAttribute('data-open'),'true');
+    await page.locator('#detail-mode [data-detail="full"]').click();
+    assert.equal(await page.locator('#messages article[data-open="false"]').count(),0);
+    await page.locator('#detail-mode [data-detail="summary"]').click();
+    assert.equal(await page.locator('#messages article[data-open="true"]').count(),0);
     await page.locator('#skills-open').click();await page.waitForFunction(()=>document.querySelector('#skill-code').textContent.includes('main'));
     await page.locator('#skills-dialog .modal-close').click();
+    await page.locator('#records-open').click();
     const download=page.waitForEvent('download');await page.selectOption('#export-format','json');const file=await download;const exported=JSON.parse(fs.readFileSync(await file.path(),'utf8'));assert(exported.messages.length>=9);
+    await page.locator('#live-open').click();
     await page.locator('#message-body').fill('重连之后继续保留的草稿');
     await stop();await page.waitForFunction(()=>!document.querySelector('#connection-error').hidden,{},{timeout:20000});
     start();await ready();await page.waitForFunction(()=>document.querySelector('#connection-error').hidden);
@@ -309,9 +380,28 @@ async function raceTests(browser) {
     await page.waitForTimeout(4200);
     await page.locator('#message-scroll').evaluate(el=>el.scrollTop=0);
     await page.evaluate(()=>{document.activeElement?.blur();window.scrollTo(0,0);});
-    await page.screenshot({path:path.join(screenshots,'desktop-qa.png'),fullPage:true});
-    await page.setViewportSize({width:390,height:844});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(screenshots,'mobile-qa.png'),fullPage:true});
+    await page.screenshot({path:path.join(screenshots,'desktop-qa.png')});
+    await page.setViewportSize({width:390,height:844});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(screenshots,'mobile-qa.png')});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile horizontal overflow');
+    await page.locator('#menu-toggle').click();
+    assert(await page.locator('main').evaluate(el=>el.inert));
+    assert.equal(await page.evaluate(()=>document.activeElement.id),'new-session');
+    await page.locator('#sidebar a').first().focus();await page.keyboard.press('Shift+Tab');
+    assert.equal(await page.evaluate(()=>document.activeElement.id),'sidebar-scrim');
+    await page.keyboard.press('Tab');assert(await page.evaluate(()=>document.querySelector('#sidebar').contains(document.activeElement)));
+    await page.keyboard.press('Escape');
+    assert(await page.locator('#sidebar-scrim').isHidden());
+    assert.equal(await page.evaluate(()=>document.activeElement.id),'menu-toggle');
+    assert.equal(await page.locator('main').evaluate(el=>el.inert),false);
+    await page.locator('#mobile-tabs [data-m="tasks"]').click();
+    assert(await page.locator('#task-panel').isVisible());assert(await page.locator('#stage').isHidden());
+    await page.locator('#mobile-tabs [data-m="live"]').click();assert(await page.locator('#stage').isVisible());
+    await page.locator('#menu-toggle').click();await page.setViewportSize({width:1440,height:1000});
+    assert.equal(await page.locator('main').evaluate(el=>el.inert),false);
+    assert.equal(await page.locator('#menu-toggle').getAttribute('aria-expanded'),'false');
+    await page.setViewportSize({width:390,height:844});
+    console.log('PASS navigation: narrow drawer focus containment, Escape, focus return, phone tabs and desktop resize');
+    await page.locator('#mobile-tabs [data-m="members"]').click();
     await page.locator('#context-preview-open').click();await page.waitForFunction(()=>document.querySelector('#context-preview').textContent.includes('CTX-OWN'));
     assert(!(await page.locator('#context-preview').textContent()).includes('CTX-PEER'));
     await page.locator('#context-dialog .modal-close').click();
@@ -336,16 +426,18 @@ async function raceTests(browser) {
     await page.unroute('**/api/session',loseCreateResponse);
     console.log('PASS integration: lost create response retries without creating a duplicate session');
     assert.equal(await page.locator('#usage-total').textContent(),'未报告');
+    await page.locator('#mobile-tabs [data-m="members"]').click();
     await page.selectOption('#usage-scope','all');assert.equal(await page.locator('#usage-total').textContent(),'1,300');
     assert.equal(await page.locator('#sidebar-scrim').isHidden(),true);
     assert.equal(await page.locator('#messages article').count(),1);
+    await page.locator('#mobile-tabs [data-m="live"]').click();
     await page.locator('#finish-session').click();await page.locator('#confirm-finish').click();
     await page.waitForFunction(()=>document.querySelector('#session-status').textContent==='已结束');
     assert.equal(await page.locator('#reader-warning').isHidden(),true);
     assert.equal(await page.locator('#send-button').isDisabled(),true);
     assert.equal(await page.locator('#shared-context').isDisabled(),true);
     assert.deepEqual(errors,[]);
-    console.log('PASS: real message sync, intervention ACK, pause/resume, provider choices, media task, upload preview, search, skill guide, export, reconnect/draft, mobile layout, session isolation, finish.');
+    console.log('PASS: real message sync, intervention ACK, pause/resume, provider choices, media task, upload preview, search, event detail modes, skill guide, export, reconnect/draft, mobile layout, session isolation, finish.');
     console.log('UI screenshots: '+screenshots);
   } finally {if(browser)await browser.close();await stop();const target=path.resolve(data);assert.equal(path.dirname(target),path.resolve(os.tmpdir()));assert(path.basename(target).startsWith('agents-talk-browser-'));fs.rmSync(target,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,5 +1,6 @@
 import concurrent.futures
 import contextlib
+import hashlib
 import importlib.util
 import json
 import os
@@ -115,6 +116,14 @@ class HubTests(unittest.TestCase):
             with req(a['url']) as r:self.assertEqual(r.headers['Content-Type'],'application/octet-stream');self.assertIn('attachment',r.headers['Content-Disposition'])
             with req('/api/export?session=main') as r:self.assertEqual(json.load(r)['total'],1)
             with self.assertRaises(urllib.error.HTTPError):req('/../../config.json')
+            for fields in (dict(task=[]), dict(attachments=[{}]), dict(files=[{}]), dict(kind={})):
+                with self.subTest(invalid_http_fields=fields):
+                    malformed = json.dumps({'session':'main','type':'say','body':'rejected',**fields}).encode()
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        req('/api/post', malformed, **{'X-Agents-Token':state['csrf']})
+                    self.assertEqual(error.exception.code, 400)
+                    self.assertTrue(json.load(error.exception)['error'])
+            with req('/api/state') as r:self.assertEqual(json.load(r)['total'],1)
         finally:server.shutdown();server.server_close();thread.join()
 
     def view(self, agent='codex', **kw):
@@ -301,5 +310,113 @@ class HubTests(unittest.TestCase):
             hub.append({'session':'main','from':'claude','to':['reasonix'],'type':'task','task':'LEGACY','body':'生成一张封面图片'})
         with self.assertRaisesRegex(hub.Reject,'仅由'):self.post('reasonix','claim',task='LEGACY')
         with self.assertRaises(hub.Reject):hub.session_action({'action':'reassign','session':'main','task':'LEGACY','to':'reasonix'})
+
+    def test_invalid_optional_message_fields_never_poison_board(self):
+        self.post(body='preserved history')
+        before = hub.BOARD.read_bytes()
+        invalid = [dict(task=[]), dict(task={}), dict(task=123), dict(files=[{}]),
+                   dict(files=[123]), dict(attachments=[{}]), dict(request_id=123),
+                   dict(request_id=''), dict(session=[]), dict(kind={})]
+        for fields in invalid:
+            with self.subTest(fields=fields):
+                with self.assertRaises(hub.Reject): self.post(**fields)
+                self.assertEqual(hub.BOARD.read_bytes(), before)
+                self.assertEqual(hub.read_state()['total'], 1)
+
+    def test_cli_scoped_commands_require_identity(self):
+        self.task(to=['reasonix'], body='SCOPE-PRIVATE-TASK')
+        env = {**os.environ, 'AGENTS_TALK_DATA': self.temp.name, 'PYTHONUTF8': '1'}
+        for command in ('read', 'status', 'tasks'):
+            result = subprocess.run([sys.executable, str(ROOT/'hub.py'), command, '--session', 'main'],
+                                    env=env, capture_output=True, text=True, encoding='utf-8', timeout=8)
+            self.assertEqual(result.returncode, 2, result.stdout)
+            self.assertIn('--agent', result.stderr)
+            self.assertNotIn('SCOPE-PRIVATE-TASK', result.stdout)
+        presence = {p.name: p.read_bytes() for p in (hub.DATA / '.presence').glob('*')}
+        result = subprocess.run([sys.executable, str(ROOT/'hub.py'), 'status', '--human', '--session', 'main'],
+                                env=env, capture_output=True, text=True, encoding='utf-8', timeout=8)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('SCOPE-PRIVATE-TASK', result.stdout)
+        self.assertEqual({p.name: p.read_bytes() for p in (hub.DATA / '.presence').glob('*')}, presence)
+        result = subprocess.run([sys.executable, str(ROOT/'hub.py'), 'status', '--human', '--agent', 'codex'],
+                                env=env, capture_output=True, text=True, encoding='utf-8', timeout=8)
+        self.assertEqual(result.returncode, 2)
+
+    def test_message_retry_rejects_changed_intent(self):
+        original = self.post(request_id='retry-fixture', body='first intent')
+        self.assertEqual(self.post(request_id='retry-fixture', body='first intent')['id'], original['id'])
+        for fields in [dict(body='changed intent'), dict(to=['reasonix']), dict(typ='plan')]:
+            with self.subTest(fields=fields):
+                with self.assertRaisesRegex(hub.Reject, '请求编号'):
+                    self.post(request_id='retry-fixture', **{'body':'first intent', **fields})
+        self.assertEqual(len(hub.load()), 1)
+
+    def test_pre_fingerprint_message_retries_compare_persisted_content(self):
+        original = self.post(request_id='legacy-retry', body='preserved legacy')
+        original.pop('request_hash')
+        hub.BOARD.write_text(json.dumps(original, ensure_ascii=False) + '\n', encoding='utf-8')
+        self.assertEqual(self.post(request_id='legacy-retry', body='preserved legacy')['id'], original['id'])
+        with self.assertRaises(hub.Reject): self.post(request_id='legacy-retry', body='changed legacy')
+        usage = self.usage(request_id='legacy-usage')
+        rows = hub.load()
+        for row in rows:
+            row.pop('request_hash', None); row.pop('_i', None)
+        hub.BOARD.write_text(''.join(json.dumps(row, ensure_ascii=False) + '\n' for row in rows), encoding='utf-8')
+        self.assertEqual(self.usage(request_id='legacy-usage')['id'], usage['id'])
+        with self.assertRaises(hub.Reject): self.usage(request_id='legacy-usage', input_tokens=2000)
+
+    def test_cli_attachment_retry_uses_content_for_current_and_legacy_records(self):
+        source = hub.DATA / 'retry attachment.txt'
+        env = {**os.environ, 'AGENTS_TALK_DATA': self.temp.name, 'PYTHONUTF8': '1'}
+        for legacy in ('current', 'unfingerprinted', 'id-fingerprint'):
+            with self.subTest(legacy=legacy):
+                source.write_bytes(b'original attachment content')
+                command = [sys.executable, str(ROOT/'hub.py'), 'post', '--from', 'claude', '--session', 'main',
+                           '--type', 'say', '--body', 'retry attachment', '--request-id', f'attachment-retry-{legacy}',
+                           '--attach', str(source)]
+                first = subprocess.run(command, env=env, capture_output=True, text=True, encoding='utf-8', timeout=8)
+                self.assertEqual(first.returncode, 0, first.stderr)
+                original = json.loads(first.stdout)
+                if legacy != 'current':
+                    rows = hub.load()
+                    for row in rows:
+                        row.pop('_i', None)
+                        if row['id'] == original['id']:
+                            if legacy == 'unfingerprinted': row.pop('request_hash', None)
+                            else:
+                                previous_intent = {'session':'main', 'from':'claude', 'type':'say', 'to':['all'],
+                                                   'body':'retry attachment', 'attachments':[row['attachments'][0]['id']]}
+                                row['request_hash'] = hashlib.sha256(json.dumps(previous_intent, sort_keys=True).encode()).hexdigest()
+                            for item in row['attachments']:
+                                item.pop('sha256', None)
+                                metadata_path = hub.DATA / 'uploads' / (item['id'] + '.json')
+                                metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+                                metadata.pop('sha256', None)
+                                metadata_path.write_text(json.dumps(metadata), encoding='utf-8')
+                    hub.BOARD.write_text(''.join(json.dumps(row) + '\n' for row in rows), encoding='utf-8')
+                before = hub.BOARD.read_bytes()
+                retry = subprocess.run(command, env=env, capture_output=True, text=True, encoding='utf-8', timeout=8)
+                self.assertEqual(retry.returncode, 0, retry.stderr)
+                repeated = json.loads(retry.stdout)
+                self.assertEqual(repeated['id'], original['id'])
+                self.assertEqual(repeated['attachments'][0]['id'], original['attachments'][0]['id'])
+                self.assertEqual(hub.BOARD.read_bytes(), before)
+                source.write_bytes(b'modified attachment content')
+                changed = subprocess.run(command, env=env, capture_output=True, text=True, encoding='utf-8', timeout=8)
+                self.assertEqual(changed.returncode, 2, changed.stdout)
+                self.assertIn('请求编号', changed.stderr)
+                self.assertEqual(hub.BOARD.read_bytes(), before)
+
+    def test_valid_json_with_invalid_event_reports_corrupt_line(self):
+        message = self.post()
+        before = hub.BOARD.read_text(encoding='utf-8')
+        for fields in (dict(task=[]), dict(**{'from':[]}), dict(files=[{}]),
+                       dict(attachments=[{}]), dict(type='reassign', task='T-1', to=[])):
+            with self.subTest(fields=fields):
+                hub.BOARD.write_text(before + json.dumps({**message, **fields}) + '\n', encoding='utf-8')
+                corrupted = hub.BOARD.read_bytes()
+                with self.assertRaisesRegex(hub.Reject, '第 2 行损坏'): hub.read_state()
+                with self.assertRaisesRegex(hub.Reject, '第 2 行损坏'): self.post()
+                self.assertEqual(hub.BOARD.read_bytes(), corrupted)
 
 if __name__=='__main__':unittest.main()

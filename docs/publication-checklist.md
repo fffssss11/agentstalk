@@ -9,25 +9,24 @@
 3. **干净副本与远端**：从发布包解压或从仓库克隆，运行测试、安装预览和启动检查。上传后核对远端树、提交邮箱、CI 结论及下载校验值。
 
 ```sh
-python -m unittest discover -s tests -v
-python scripts/build_release.py --check
-python scripts/audit_public.py --source .
-python scripts/build_release.py
-python scripts/audit_public.py --artifact ./dist/agents-talk-VERSION.zip
+python scripts/maintain.py check --browser
+python scripts/maintain.py build
+python scripts/maintain.py verify ./dist/release-VERSION/agentstalk-VERSION.zip --tests
+python scripts/audit_public.py --artifact ./dist/release-VERSION/agentstalk-VERSION.zip
 ```
 
-上方 `VERSION` 需替换为实际版本。PPTX/PDF 可通过重复 `--artifact` 检查。扫描只报告问题类别，不回显匹配的敏感值。规则匹配不覆盖所有隐私，必须人工审阅图片和事实。
+上方 `VERSION` 需替换为实际版本；完整顺序见 [维护与发布流程](maintenance.md)。`verify` 已包含对源码包的隐私扫描，PPTX/PDF 等附件仍需通过重复 `--artifact` 检查。扫描只报告问题类别，不回显匹配的敏感值。规则匹配不覆盖所有隐私，必须人工审阅图片和事实。
 
 PDF 的标准库扫描仅检查暴露的语法，不解码压缩流或混淆元数据；还需要 PDF 解析器核对元数据、动作和附件，并逐页检查渲染结果。不要把扫描通过理解成安全认证。
 
 ## GitHub 内容
 
-- 使用独立的空目录导入审核后的源码，避免旧提交历史带出已删除的信息。
+- 首次公开时使用独立的空目录导入审核后的源码，避免旧提交历史带出已删除的信息。之后的版本用 `python scripts/maintain.py sync 公开克隆 --apply` 更新：只写入清单文件，删除已退出清单的追踪文件并暂存，不会提交或推送。
 - 只在此仓库设置 Git 提交身份，使用 GitHub 设置中提供的隐私邮箱。不要改全局 Git 身份。
-- 提交前运行 `python scripts/audit_public.py --source . --tracked`，确保 Git 追踪文件恰好等于发布清单，提交邮箱均为 GitHub 隐私邮箱。
+- 提交前确认 `python scripts/audit_public.py --source . --tracked` 通过（`sync` 会自动运行），确保 Git 追踪文件恰好等于发布清单，提交邮箱均为 GitHub 隐私邮箱。
 - 不在公开 issue 中提供漏洞利用细节。启用 GitHub 私密漏洞报告后更新 SECURITY.md 的实际入口。
 - 版本仍需外部试用时标为 pre-release，不能根据单机通过就宣传全平台验证。
-- Release 附源码 ZIP、SHA-256、项目介绍 PPTX、PDF 和 MP4。保留包内源码清单，不上传开发依赖、构建日志或私密审查收据。
+- 推送 `v*` 标签后，工作流生成附源码 ZIP、`.sha256` 与 `SHA256SUMS.txt` 的草稿 Release。项目介绍 PPTX、PDF 和 MP4 等材料在草稿中手动追加，并同步更新校验值后再发布。保留包内源码清单，不上传开发依赖、构建日志或私密审查收据。
 
 SHA-256 可用于检查文件是否一致，不提供作者身份认证。Windows 用 `Get-FileHash 文件名 -Algorithm SHA256`；macOS 可用 `shasum -a 256 文件名`；Linux 可用 `sha256sum 文件名`。
 

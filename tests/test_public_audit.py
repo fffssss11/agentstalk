@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+import warnings
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +36,37 @@ class PublicAuditTests(unittest.TestCase):
             with zipfile.ZipFile(path, 'w') as z:
                 z.writestr('ppt/_rels/presentation.xml.rels', '<Relationships><Relationship TargetMode="External" Target="https://github.com"/></Relationships>')
             self.assertTrue(audit.inspect_artifact(path)['ok'])
+
+    def test_archive_checks_each_duplicate_member(self):
+        with tempfile.TemporaryDirectory(prefix='agents-talk-audit-') as tmp:
+            path = Path(tmp) / 'fixture.zip'
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', UserWarning)
+                with zipfile.ZipFile(path, 'w') as z:
+                    z.writestr('README.md', 'gh' + 'p_' + 'A' * 40)
+                    z.writestr('README.md', 'public replacement')
+            result = audit.inspect_artifact(path)
+            categories = {issue for row in result['findings'] for issue in row['issues']}
+            self.assertIn('credential-pattern', categories)
+            self.assertIn('duplicate-archive-path', categories)
+
+    def test_archive_checks_uppercase_and_extensionless_text(self):
+        with tempfile.TemporaryDirectory(prefix='agents-talk-audit-') as tmp:
+            path = Path(tmp) / 'fixture.zip'
+            with zipfile.ZipFile(path, 'w') as z:
+                z.writestr('config.JSON', 'gh' + 'p_' + 'A' * 40)
+                z.writestr('LICENSE', 'person' + '@' + 'private.invalid')
+            result = audit.inspect_artifact(path)
+            self.assertEqual({r['part'] for r in result['findings']}, {'config.JSON', 'LICENSE'})
+
+    def test_archive_checks_unsafe_directory_entries(self):
+        with tempfile.TemporaryDirectory(prefix='agents-talk-audit-') as tmp:
+            path = Path(tmp) / 'fixture.zip'
+            with zipfile.ZipFile(path, 'w') as z:
+                z.writestr('../outside/', b'')
+            result = audit.inspect_artifact(path)
+            self.assertFalse(result['ok'])
+            self.assertIn('unsafe-archive-path', result['findings'][0]['issues'])
 
     def test_pdf_streams_do_not_masquerade_as_metadata(self):
         with tempfile.TemporaryDirectory(prefix='agents-talk-audit-') as tmp:

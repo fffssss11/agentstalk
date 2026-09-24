@@ -32,6 +32,19 @@
         $resolved = Test-AgentsTalkPython $candidate
         if ($resolved) { return $resolved }
     }
+    # python.org installs that were not added to PATH, including a fresh per-user winget install.
+    $candidates = @()
+    $bases = @($env:ProgramFiles, ${env:ProgramFiles(x86)})
+    if ($env:LOCALAPPDATA) { $bases = @(Join-Path $env:LOCALAPPDATA 'Programs\Python') + $bases }
+    foreach ($base in $bases) {
+        if (-not $base -or -not (Test-Path -LiteralPath $base)) { continue }
+        $candidates += Get-ChildItem -LiteralPath $base -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | ForEach-Object { Join-Path $_.FullName 'python.exe' }
+    }
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        $resolved = Test-AgentsTalkPython $candidate
+        if ($resolved) { return $resolved }
+    }
     throw 'Python 3.10+ was not found. Install Python, reopen the terminal, or set AGENTS_TALK_PYTHON to its executable.'
 }
 

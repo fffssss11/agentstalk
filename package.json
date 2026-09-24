@@ -1,5 +1,5 @@
 {
-  "name": "agents-talk",
+  "name": "agentstalk",
   "version": "0.1.0-rc.3",
   "private": true,
   "description": "Local multi-agent collaboration board. Node is only needed for browser development tests.",
@@ -8,11 +8,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node tests/browser.cjs && node tests/observatory.cjs && node tests/instances.cjs",
+    "test": "node --test tests/support.test.cjs && node tests/browser.cjs && node tests/flow.cjs && node tests/instances.cjs && node tests/activity.cjs && node tests/workspace.cjs",
     "test:browser": "node tests/browser.cjs",
-    "test:observatory": "node tests/observatory.cjs",
+    "test:flow": "node tests/flow.cjs",
     "test:instances": "node tests/instances.cjs",
-    "check": "node --check web/app.js && node --check docs/promo/timeline.js && node --check docs/promo/render.cjs",
+    "test:activity": "node tests/activity.cjs",
+    "test:workspace": "node tests/workspace.cjs",
+    "check": "node --check web/js/util.js && node --check web/js/themes.js && node --check web/js/state.js && node --check web/js/sidebar.js && node --check web/js/capture.js && node --check web/js/stage.js && node --check web/js/chat.js && node --check web/js/panels.js && node --check web/js/flow.js && node --check web/js/settings.js && node --check web/js/main.js && node --check docs/promo/timeline.js && node --check docs/promo/render.cjs",
     "browser:install": "playwright install chromium"
   },
   "devDependencies": {
@@ -20,10 +22,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/fffssss11/agents-talk.git"
+    "url": "https://github.com/fffssss11/agentstalk.git"
   },
-  "homepage": "https://github.com/fffssss11/agents-talk",
+  "homepage": "https://github.com/fffssss11/agentstalk",
   "bugs": {
-    "url": "https://github.com/fffssss11/agents-talk/issues"
+    "url": "https://github.com/fffssss11/agentstalk/issues"
   }
 }
