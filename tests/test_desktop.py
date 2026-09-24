@@ -137,6 +137,70 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', 'replace'))
         self.assertEqual(Path(found.read_text(encoding='utf-8-sig').strip()), expected)
 
+    def launcher_dialogs(self, call, answer, env=None):
+        """Run launch.ps1's own functions with a stub message box that records each dialog and answers it."""
+        harness = self.project / 'scripts' / 'dialog-harness.ps1'
+        harness.write_text(r'''
+$ErrorActionPreference = 'Stop'
+$ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'launch.ps1'), [ref]$null, [ref]$null)
+# Only the function definitions, dot-sourced from scripts/ so $PSScriptRoot and parameters stay intact.
+$definitions = $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false) | ForEach-Object { $_.Extent.Text }
+$functions = Join-Path $PSScriptRoot 'launch-functions.ps1'
+[IO.File]::WriteAllText($functions, ($definitions -join "`r`n"), [Text.UTF8Encoding]::new($true))
+. $functions
+$script:dialogs = @()
+function Show-Message([string]$Text, [string]$Buttons = 'OK', [string]$Icon = 'Information') {
+    $script:dialogs += $Text
+    if ($Buttons -eq 'OK') { return 'OK' }
+    return $env:TEST_ANSWER
+}
+$interactive = $true
+$runtimePath = Join-Path (Split-Path -Parent $PSScriptRoot) '.runtime'
+New-Item -ItemType Directory -Path $runtimePath -Force | Out-Null
+$value = & ([scriptblock]::Create($env:TEST_CALL))
+@{ dialogs = @($script:dialogs); value = [string]$value } | ConvertTo-Json | Set-Content -LiteralPath $env:TEST_RESULT -Encoding UTF8
+''', encoding='utf-8-sig')
+        result_path = self.base / 'dialogs.json'
+        run_env = {**self.env, **(env or {}), 'TEST_CALL': call, 'TEST_ANSWER': answer, 'TEST_RESULT': str(result_path)}
+        run = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(harness)],
+                             env=run_env, capture_output=True, timeout=120)
+        self.assertEqual(run.returncode, 0, run.stderr.decode('utf-8', 'replace'))
+        return json.loads(result_path.read_text(encoding='utf-8-sig'))
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows launcher dialogs')
+    def test_windows_first_run_offers_detected_clients_once_and_respects_the_answer(self):
+        (self.home / '.codex').mkdir()
+        legacy = self.home / '.claude' / 'skills' / 'agents-talk'
+        legacy.mkdir(parents=True)
+        (legacy / 'location.md').write_text('# Local Agents Talk location\n\nProject: ' + str(self.base / 'private board') + '\n', encoding='utf-8')
+        marker = self.project / '.runtime' / 'setup.json'
+        call = "Invoke-FirstRunSetup '" + sys.executable + "'"
+        declined = self.launcher_dialogs(call, 'No')
+        self.assertEqual(len(declined['dialogs']), 1)
+        self.assertIn('Codex → ' + str(self.home / '.codex' / 'skills'), declined['dialogs'][0])
+        self.assertIn('Claude Code：协作技能指向另一个目录 ' + str(self.base / 'private board'), declined['dialogs'][0])
+        self.assertEqual(json.loads(marker.read_text(encoding='utf-8-sig'))['skills'], 'declined')
+        self.assertFalse((self.home / '.codex' / 'skills').exists())
+        # Asked once per folder: with the marker in place nothing is shown again.
+        self.assertEqual(self.launcher_dialogs(call, 'Yes')['dialogs'], [])
+        marker.unlink()
+        accepted = self.launcher_dialogs(call, 'Yes')
+        self.assertEqual(accepted['dialogs'][-1], '已安装：Codex')
+        self.assertTrue((self.home / '.codex' / 'skills' / 'agents-talk' / 'location.md').is_file())
+        self.assertEqual((legacy / 'location.md').read_text(encoding='utf-8').count('private board'), 1)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows launcher dialogs')
+    def test_windows_missing_python_is_explained_and_nothing_is_installed_on_cancel(self):
+        empty = self.base / 'no python'
+        empty.mkdir()
+        system = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32')
+        env = {'PATH': system + os.pathsep + os.path.join(system, 'WindowsPowerShell', 'v1.0'), 'AGENTS_TALK_PYTHON': str(empty / 'python.exe'),
+               'LOCALAPPDATA': str(empty), 'ProgramFiles': str(empty), 'ProgramFiles(x86)': str(empty)}
+        result = self.launcher_dialogs('Get-Python', 'No', env)
+        self.assertEqual(result['value'], '')
+        self.assertEqual(len(result['dialogs']), 1)
+        self.assertIn('没有找到 Python 3.10 或更高版本', result['dialogs'][0])
+
     @unittest.skipUnless(shutil.which('sh'), 'POSIX shell')
     def test_posix_launcher_is_created_and_removed(self):
         for script in ('desktop.sh', 'launch.sh'):
