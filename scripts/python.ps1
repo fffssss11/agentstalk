@@ -51,8 +51,9 @@
 function Test-AgentsTalkPython([string]$Candidate) {
     if (-not $Candidate -or -not (Test-Path -LiteralPath $Candidate)) { return $null }
     try {
-        $found = & $Candidate -c 'import sys; assert sys.version_info >= (3,10); print(sys.executable)' 2>$null
-        if ($LASTEXITCODE -eq 0 -and $found) { return ($found | Select-Object -Last 1).Trim() }
+        # JSON keeps the path ASCII, so non-ASCII folders survive any console code page.
+        $found = & $Candidate -c 'import json, sys; assert sys.version_info >= (3,10); print(json.dumps(sys.executable))' 2>$null
+        if ($LASTEXITCODE -eq 0 -and $found) { return [string](($found | Select-Object -Last 1) | ConvertFrom-Json) }
     } catch { }
     return $null
 }

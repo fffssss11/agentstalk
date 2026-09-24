@@ -111,7 +111,7 @@ try {
         if ($probe.app -eq 'agents-talk' -and $probe.version -eq 2 -and $probe.root -eq $projectRoot -and $probe.data -eq $dataPath -and $probe.config -eq $configPath -and $probe.app_version -eq $expectedVersion) {
             $isReady = $true
         } elseif ($probe.app -eq 'agents-talk' -and $probe.root -eq $projectRoot) {
-            throw "本目录的控制面板正在以版本 $($probe.app_version) 或其他数据设置运行。请先运行 scripts\stop.ps1 停止它，再双击图标。"
+            throw "本目录的控制面板正在以版本 $($probe.app_version) 或其他数据设置运行。请先关闭它：前台窗口按 Ctrl+C，后台服务运行 scripts\stop.ps1，然后再双击图标。"
         } elseif ($probe.app -eq 'agents-talk') {
             throw "端口 $Port 已被另一个 agentstalk 控制面板占用（目录：$($probe.root)）。请先关闭它，或用 -Port 指定其他端口。"
         } else {

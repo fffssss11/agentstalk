@@ -22,7 +22,7 @@
 - GitHub 仓库更名为 `agentstalk`，源码包改名为 `agentstalk-版本号.zip`；skill 名称、页面存储与健康接口标识保持不变，已有安装不受影响。
 - 新增桌面图标：Windows 双击 `创建桌面图标.cmd`，macOS/Linux 运行 `sh scripts/desktop.sh`。双击图标会检查 Python（Windows 可在确认后用 winget 安装）、首次运行询问是否为已检测到的客户端安装 skill，然后启动控制面板；图标与面板品牌标志一致，由 `scripts/make_icons.py` 可复现生成。
 - skill 安装器新增 `--status` 与 `--setup`；没有归属清单、但由其他目录安装的旧版 skill 需要 `--replace-project` 才会改写，避免误把正在使用的客户端指向另一份副本。
-- Windows Python 查找增加 python.org 标准安装位置；启动错误改为中文提示，启动失败时附带环境检查结果。
+- Windows Python 查找增加 python.org 标准安装位置，Python 路径含中文等非英文字符时也能正确识别；桌面图标以 Unicode 方式写入，英文版 Windows 上的中文目录同样可用。启动错误改为中文提示，启动失败时附带环境检查结果。
 
 ## 0.1.0-rc.3
 

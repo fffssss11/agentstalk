@@ -129,8 +129,9 @@ class ContinuationTests(unittest.TestCase):
         result = self.cli('--data-dir', str(hub.DATA), '--config', str(custom_config),
                           'read', '--agent', 'reasonix', '--session', 'main')
         command = result['continuation']['listen_argv']
-        self.assertEqual(command[command.index('--data-dir') + 1], str(hub.DATA))
-        self.assertEqual(command[command.index('--config') + 1], str(custom_config))
+        # The CLI resolves both paths; temp folders may be aliases (/var -> /private/var, 8.3 short names).
+        self.assertEqual(Path(command[command.index('--data-dir') + 1]), hub.DATA.resolve())
+        self.assertEqual(Path(command[command.index('--config') + 1]), custom_config.resolve())
         self.post('claude', 'say', body='isolated continuation message')
         resumed = subprocess.run(command, env={**self.env, 'AGENTS_TALK_DATA':str(hub.DATA / 'wrong-board')},
                                  capture_output=True, text=True, encoding='utf-8', timeout=8)

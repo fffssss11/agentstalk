@@ -16,6 +16,26 @@ release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 
 
+def read_link(path):
+    """Strings stored in a .lnk file (MS-SHLLINK), read from the bytes so no Windows API can hide lost characters."""
+    data = Path(path).read_bytes()
+    flags = struct.unpack_from('<I', data, 20)[0]
+    pos, fields = 76, {'unicode': bool(flags & 0x80)}
+    if flags & 0x1:
+        pos += 2 + struct.unpack_from('<H', data, pos)[0]
+    if flags & 0x2:
+        size, _, info_flags, _, base = struct.unpack_from('<IIIII', data, pos)
+        if info_flags & 1: fields['target'] = data[pos + base:data.index(b'\0', pos + base)].decode('mbcs')
+        pos += size
+    for bit, key in ((0x4, 'description'), (0x8, 'relative'), (0x10, 'folder'), (0x20, 'arguments'), (0x40, 'icon')):
+        if flags & bit:
+            count = struct.unpack_from('<H', data, pos)[0]
+            size = count * 2 if flags & 0x80 else count
+            fields[key] = data[pos + 2:pos + 2 + size].decode('utf-16-le' if flags & 0x80 else 'mbcs')
+            pos += 2 + size
+    return fields
+
+
 class DesktopTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='agents-talk-desktop-')
@@ -56,6 +76,16 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(sizes, [16, 24, 32, 48, 64, 128, 256])
         self.assertEqual((self.project / 'scripts/agentstalk.png').read_bytes(), data[struct.unpack_from('<I', data, 6 + 16 * 6 + 12)[0]:])
 
+    def test_launcher_scripts_keep_the_text_format_their_interpreters_need(self):
+        # Windows PowerShell 5.1 reads BOM-less files in the ANSI code page and mangles Chinese strings;
+        # cmd/vbs expect CRLF and sh fails on CR characters.
+        for name, content in release.inventory(ROOT).items():
+            suffix = Path(name).suffix.lower()
+            with self.subTest(name=name):
+                if suffix == '.ps1': self.assertTrue(content.startswith(b'\xef\xbb\xbf'))
+                if suffix in ('.ps1', '.cmd', '.vbs'): self.assertEqual(content.count(b'\n'), content.count(b'\r\n'))
+                if suffix == '.sh': self.assertNotIn(b'\r', content)
+
     @unittest.skipUnless(os.name == 'nt', 'Windows shortcut')
     def test_windows_shortcut_points_to_this_folder_and_protects_others(self):
         desktop = self.base / 'Desktop'
@@ -66,19 +96,14 @@ class DesktopTests(unittest.TestCase):
             output = result.stdout.decode('utf-8', 'replace') + result.stderr.decode('utf-8', 'replace')
             self.assertEqual(result.returncode, expected, output)
             return output
-        def read(link):
-            script = ("$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:LINK);"
-                      "[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
-                      "@{target=$s.TargetPath;arguments=$s.Arguments;icon=$s.IconLocation;folder=$s.WorkingDirectory}|ConvertTo-Json")
-            result = subprocess.run(['powershell', '-NoProfile', '-Command', script], env={**os.environ, 'LINK': str(link)},
-                                    capture_output=True, timeout=60)
-            return json.loads(result.stdout.decode('utf-8'))
         ps()
         link = desktop / 'agentstalk.lnk'
-        info = read(link)
+        info = read_link(link)
+        # The folder name is Chinese: every character must survive, whatever the system code page.
+        self.assertTrue(info['unicode'])
         self.assertTrue(info['target'].lower().endswith('wscript.exe'))
         self.assertEqual(info['arguments'], '"' + str(self.project / 'scripts' / 'launch.vbs') + '"')
-        self.assertEqual(info['icon'], str(self.project / 'scripts' / 'agentstalk.ico') + ',0')
+        self.assertEqual(info['icon'], str(self.project / 'scripts' / 'agentstalk.ico'))
         self.assertEqual(Path(info['folder']), self.project)
         # A shortcut that belongs to another copy is backed up before it is replaced, and never removed.
         other = self.base / 'other copy'
@@ -90,9 +115,27 @@ class DesktopTests(unittest.TestCase):
         ps()
         backups = list((self.project / '.backups' / 'shortcuts').rglob('agentstalk.lnk'))
         self.assertEqual(len(backups), 1)
-        self.assertEqual(read(backups[0])['arguments'], '"' + str(other / 'scripts' / 'launch.vbs') + '"')
+        self.assertEqual(read_link(backups[0])['arguments'], '"' + str(other / 'scripts' / 'launch.vbs') + '"')
         ps('-Remove')
         self.assertFalse(link.exists())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows interpreter discovery')
+    def test_windows_finds_python_in_a_non_ascii_folder_whatever_the_console_encoding(self):
+        venv = self.base / '中文 python'
+        subprocess.run([sys.executable, '-m', 'venv', '--without-pip', str(venv)], check=True, capture_output=True, timeout=180)
+        expected = venv / 'Scripts' / 'python.exe'
+        found = self.base / 'found.txt'
+        script = self.base / 'find.ps1'
+        # The launcher reads child output as UTF-8 while Python writes piped output in the ANSI code page.
+        script.write_text("try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }\n"
+                          ". (Join-Path $env:PROJECT_UNDER_TEST 'scripts\\python.ps1')\n"
+                          "Find-AgentsTalkPython | Set-Content -LiteralPath $env:FOUND_PATH -Encoding UTF8\n", encoding='utf-8-sig')
+        env = {k: v for k, v in os.environ.items() if k not in ('PYTHONIOENCODING', 'PYTHONUTF8')}
+        env.update(AGENTS_TALK_PYTHON=str(expected), PROJECT_UNDER_TEST=str(self.project), FOUND_PATH=str(found))
+        result = subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script)],
+                                env=env, capture_output=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', 'replace'))
+        self.assertEqual(Path(found.read_text(encoding='utf-8-sig').strip()), expected)
 
     @unittest.skipUnless(shutil.which('sh'), 'POSIX shell')
     def test_posix_launcher_is_created_and_removed(self):
