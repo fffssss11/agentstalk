@@ -397,7 +397,8 @@ async function storageTests(browser) {
     assert(await page.locator('#task-panel').isVisible());assert(await page.locator('#stage').isHidden());
     await page.locator('#mobile-tabs [data-m="live"]').click();assert(await page.locator('#stage').isVisible());
     await page.locator('#menu-toggle').click();await page.setViewportSize({width:1440,height:1000});
-    assert.equal(await page.locator('main').evaluate(el=>el.inert),false);
+    // The drawer closes on the media-query change event, which can arrive a frame after the resize.
+    await page.waitForFunction(()=>!document.querySelector('main').inert,null,{timeout:5000});
     assert.equal(await page.locator('#menu-toggle').getAttribute('aria-expanded'),'false');
     await page.setViewportSize({width:390,height:844});
     console.log('PASS navigation: narrow drawer focus containment, Escape, focus return, phone tabs and desktop resize');
