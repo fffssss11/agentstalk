@@ -29,7 +29,8 @@
 - 源码 ZIP `agentstalk-0.3.0.zip`，内含 `SOURCE-MANIFEST.json`，记录每个源码文件的 SHA-256。
 - Windows 便携包 `agentstalk-0.3.0-windows-x64.zip`：同一份源码加 `runtime/python/` 下原样收录的 python.org 嵌入式 Python 3.13.15；`SOURCE-MANIFEST.json` 另记录运行时的版本、下载地址与 SHA-256。
 - 两个 ZIP 各自的校验文件与覆盖全部附件的 `SHA256SUMS.txt`。
-- 宣传视频与 6 页介绍 PPT/PDF 沿用 [0.1.0-rc.3](https://github.com/fffssss11/agentstalk/releases/tag/v0.1.0-rc.3) 的附件，展示的是 0.2.0 重构前的界面，本版不重复上传。
+- 发布后追加的展示片 `Agents-Talk-Showcase-60s-1080p60.mp4`（60 秒，1080p 60fps，无音轨）：界面画面截自在隔离数据上真实运行的面板，成员与数据为演示，未调用真实模型。追加时同步更新了 `SHA256SUMS.txt`，原有附件的校验值不变。
+- 6 页介绍 PPT/PDF 沿用 [0.1.0-rc.3](https://github.com/fffssss11/agentstalk/releases/tag/v0.1.0-rc.3) 的附件，展示的是 0.2.0 重构前的界面，本版不重复上传。
 
 发布工具只读取 `release-files.json` 的精确文件，不遍历真实聊天、附件、成果、配置、安装版路径、依赖或备份。同一源码字节生成确定的 ZIP；GitHub 发布工作流在 Linux 上构建两个包，再在 Windows 上重新构建便携包并要求字节一致，上传前再次核对两个 ZIP 与已测试的构建相同。校验值检查文件一致性，不提供作者签名。
 

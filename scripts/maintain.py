@@ -123,9 +123,10 @@ def archive_manifest(path):
 
 
 def latest_archive(root=ROOT):
-    # Releases before the rename were called agents-talk-VERSION.zip.
+    # Releases before the rename were called agents-talk-VERSION.zip. Platform packages also carry a runtime,
+    # so the source comparison skips them.
     found = [p for pattern in (f'{build_release.ARCHIVE_NAME}-*.zip', 'agents-talk-*.zip')
-             for p in (root / 'dist').rglob(pattern)] if (root / 'dist').is_dir() else []
+             for p in (root / 'dist').rglob(pattern) if not p.name.endswith(f'-{portable.PLATFORM}.zip')] if (root / 'dist').is_dir() else []
     return max(found, key=lambda p: p.stat().st_mtime) if found else None
 
 

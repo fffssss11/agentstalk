@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `maintain.py status` 与源码包比较变化，不再误选同一版本、时间更新的 Windows 便携包。
+- README 与英文版改为链接 0.3.0 Release 附件中的 60 秒展示片；发布说明与第三方声明补充了这段视频的说明。
+
 ## 0.3.0
 
 Windows 用户不必再另外安装 Python：新增自带 python.org 官方 Python 的便携包，第一次启动时询问是否创建桌面图标，README 与英文版全面重写。

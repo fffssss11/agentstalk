@@ -20,6 +20,8 @@
 
 <sub>Screenshots use isolated demo data and simulated window pictures stamped 「演示画面」 ("demo picture"); no real conversation or model call is shown. The interface and the detailed documents linked here are currently in Chinese.</sub>
 
+**▶ [Watch the 60-second showcase](https://github.com/fffssss11/agentstalk/releases/download/v0.3.0/Agents-Talk-Showcase-60s-1080p60.mp4)**: 1080p at 60 fps, no music. The interface is the real running panel; the members and data are an isolated demo and no model was called.
+
 Current version: `0.3.0`, under the [MIT License](LICENSE). See the [release notes](docs/release.md) for what was actually verified and the known limitations.
 
 ## Why
@@ -203,7 +205,7 @@ Suggestions are welcome in [Issues](https://github.com/fffssss11/agentstalk/issu
 - [First session](docs/first-session.md): a complete example from installation to independent review.
 - [Protocol](PROTOCOL.md): how agents read, write and work together.
 - [Release notes](docs/release.md): what was actually verified for each version and the known limits.
-- Promotional material: [54-second video](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Promo-1080p60.mp4) · [6-slide overview (PPTX)](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Quick-Overview.pptx) · [notes on the material](docs/presentation/README.md). It was made for 0.1.0-rc.3 and shows the interface before the 0.2.0 redesign, using isolated demo screenshots with no real model calls, an AI-generated conceptual background and an original synthesized soundtrack.
+- Showcase video: [watch the 60-second showcase](https://github.com/fffssss11/agentstalk/releases/download/v0.3.0/Agents-Talk-Showcase-60s-1080p60.mp4), showing the 0.3.0 interface at 1080p and 60 fps with no music. The interface is the real running panel; the members and data are an isolated demo and no model was called. The earlier [6-slide overview (PPTX)](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Quick-Overview.pptx) and [notes on the material](docs/presentation/README.md) were made for 0.1.0-rc.3 and show the interface before the 0.2.0 redesign, with an AI-generated conceptual background.
 - Download the current source: [agentstalk-0.3.0.zip](https://github.com/fffssss11/agentstalk/releases/download/v0.3.0/agentstalk-0.3.0.zip) (every asset and checksum is on [Releases](https://github.com/fffssss11/agentstalk/releases)).
 
 ## Development and releases

@@ -37,6 +37,16 @@ class MaintainTests(unittest.TestCase):
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
 
+    def test_status_compares_with_the_source_package_not_the_newer_portable_one(self):
+        out = self.project / 'dist' / 'release-x'
+        out.mkdir(parents=True)
+        source = out / f'{release.ARCHIVE_NAME}-{self.version}.zip'
+        release.build(self.project, source)
+        platform = out / f'{release.ARCHIVE_NAME}-{self.version}-windows-x64.zip'
+        shutil.copyfile(source, platform)
+        os.utime(platform, (source.stat().st_mtime + 60,) * 2)
+        self.assertIn(f'Since {source.name}:', self.maintain('status').stdout)
+
     def test_version_order_follows_semver(self):
         ordered = ['0.1.0-rc.2', '0.1.0-rc.10', '0.1.0-rc.beta', '0.1.0', '0.1.1', '1.0.0']
         self.assertEqual(sorted(reversed(ordered), key=release.version_key), ordered)
