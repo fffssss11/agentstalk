@@ -152,7 +152,8 @@ class DistributionTests(unittest.TestCase):
         a, b = self.base / 'a.zip', self.base / 'b.zip'
         release.build(self.project, a, True); release.build(self.project, b, True)
         self.assertEqual(a.read_bytes(), b.read_bytes())
-        self.assertIn(hashlib.sha256(a.read_bytes()).hexdigest(), a.with_name('a.zip.sha256').read_text(encoding='utf-8'))
+        # The checksum file must be byte-identical on every platform, like the archive itself.
+        self.assertEqual(a.with_name('a.zip.sha256').read_bytes(), (hashlib.sha256(a.read_bytes()).hexdigest() + '  a.zip\n').encode())
         with zipfile.ZipFile(a) as z:
             names = z.namelist()
             self.assertFalse(any(n.endswith('/board.jsonl') or '/uploads/' in n for n in names))

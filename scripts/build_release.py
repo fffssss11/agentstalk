@@ -96,7 +96,8 @@ def build(root, output=None, allow_unlicensed=False):
     payload = buffer.getvalue()
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open('xb') as f: f.write(payload)
-    with checksum.open('x', encoding='utf-8') as f: f.write(hashlib.sha256(payload).hexdigest() + '  ' + output.name + '\n')
+    # LF on every platform keeps the checksum file, like the archive, byte-identical to the CI build.
+    with checksum.open('x', encoding='utf-8', newline='\n') as f: f.write(hashlib.sha256(payload).hexdigest() + '  ' + output.name + '\n')
     return {**manifest, 'archive': str(output), 'bytes': len(payload), 'checksum': str(checksum)}
 
 
