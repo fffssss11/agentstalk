@@ -1306,6 +1306,8 @@ def main():
     stack = contextlib.ExitStack()
     try:
         if args.cmd == 'doctor':
+            # The bundled Windows Python runs isolated and does not put the script folder on sys.path.
+            if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
             from scripts.project_tools import diagnose
             result = diagnose(sys.modules[__name__])
             print(json.dumps(result, ensure_ascii=False, indent=2))

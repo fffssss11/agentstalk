@@ -81,14 +81,23 @@ def build(root, output=None, allow_unlicensed=False):
     files = [{'path': p, 'bytes': len(b), 'sha256': hashlib.sha256(b).hexdigest()} for p, b in entries.items()]
     manifest = {'version': version, 'license_status': 'included' if licensed else 'pending_owner_choice', 'files': files}
     if output is None: return manifest
+    written = write_archive(output, ARCHIVE_NAME + '-' + version, {**entries, 'SOURCE-MANIFEST.json': manifest_bytes(manifest)})
+    return {**manifest, **written}
+
+
+def manifest_bytes(manifest):
+    return (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode()
+
+
+def write_archive(output, top, entries):
+    """Deterministic ZIP with a single top-level folder, plus its checksum file. Never overwrites."""
     output = Path(output).resolve()
     checksum = output.with_name(output.name + '.sha256')
     if output.exists() or checksum.exists(): raise ValueError('Refusing to overwrite an existing release or checksum')
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        all_entries = {**entries, 'SOURCE-MANIFEST.json': (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode()}
-        for name, content in sorted(all_entries.items()):
-            info = zipfile.ZipInfo(ARCHIVE_NAME + '-' + version + '/' + name, date_time=(2020, 1, 1, 0, 0, 0))
+        for name, content in sorted(entries.items()):
+            info = zipfile.ZipInfo(top + '/' + name, date_time=(2020, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.create_system = 3
             info.external_attr = 0o100644 << 16
@@ -98,7 +107,7 @@ def build(root, output=None, allow_unlicensed=False):
     with output.open('xb') as f: f.write(payload)
     # LF on every platform keeps the checksum file, like the archive, byte-identical to the CI build.
     with checksum.open('x', encoding='utf-8', newline='\n') as f: f.write(hashlib.sha256(payload).hexdigest() + '  ' + output.name + '\n')
-    return {**manifest, 'archive': str(output), 'bytes': len(payload), 'checksum': str(checksum)}
+    return {'archive': str(output), 'bytes': len(payload), 'checksum': str(checksum)}
 
 
 def main():

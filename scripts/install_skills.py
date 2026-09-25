@@ -180,6 +180,11 @@ def install(project, client, target, data_dir, config_path, apply=False, uninsta
 CLIENT_NAMES = {'codex': 'Codex', 'claude': 'Claude Code', 'reasonix': 'Reasonix', 'zcode': 'ZCode'}
 
 
+def rerun(*args):
+    # The Python running now, which may be the portable package's; a bare `python` may not exist.
+    return command_text([sys.executable, 'scripts/install_skills.py', *args])
+
+
 def setup(states, data_dir, config_path, targets):
     """Terminal first run for the macOS/Linux launcher; the Windows launcher asks the same in dialogs."""
     ready = [c for c, s in states.items() if s['detected'] and s['state'] in ('missing', 'outdated')]
@@ -187,7 +192,7 @@ def setup(states, data_dir, config_path, targets):
         if not row['detected']: continue
         if row['state'] == 'other':
             print(f'{CLIENT_NAMES[client]}：协作技能指向另一个目录 {row["project"]}，未改动。改用本目录请运行 '
-                  f'python scripts/install_skills.py --clients {client} --replace-project --apply')
+                  + rerun('--clients', client, '--replace-project', '--apply'))
         elif row['state'] == 'unmanaged':
             print(f'{CLIENT_NAMES[client]}：{row["target"]} 已有不由安装器管理的同名技能，未改动。')
         elif row['state'] == 'current':
@@ -196,7 +201,7 @@ def setup(states, data_dir, config_path, targets):
     print('可以为这些客户端安装 agentstalk 协作技能：')
     for client in ready: print(f'  {CLIENT_NAMES[client]} → {states[client]["target"]}')
     if not sys.stdin.isatty() or input('现在安装吗？[y/N] ').strip().lower() not in ('y', 'yes'):
-        print('未安装。之后可运行 python scripts/install_skills.py --clients ' + ' '.join(ready) + ' --apply')
+        print('未安装。之后可运行 ' + rerun('--clients', *ready, '--apply'))
         return 0
     failed = 0
     for client in ready:

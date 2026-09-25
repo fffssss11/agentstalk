@@ -49,8 +49,10 @@ class DesktopTests(unittest.TestCase):
         self.home = self.base / 'home'
         self.home.mkdir()
         self.env = {k: v for k, v in os.environ.items() if not k.startswith(('AGENTS_TALK_', 'CODEX_HOME'))}
+        # The launcher's icon question writes to AGENTS_TALK_DESKTOP, never to the real desktop, in these tests.
+        self.desktop = self.base / 'Desktop'
         self.env.update(PYTHONUTF8='1', PYTHONDONTWRITEBYTECODE='1', HOME=str(self.home), USERPROFILE=str(self.home),
-                        APPDATA=str(self.home / 'AppData' / 'Roaming'))
+                        APPDATA=str(self.home / 'AppData' / 'Roaming'), AGENTS_TALK_DESKTOP=str(self.desktop))
 
     def installer(self, *args, expected=0, stdin=None):
         result = subprocess.run([sys.executable, str(self.project / 'scripts/install_skills.py'), *map(str, args)],
@@ -82,7 +84,10 @@ class DesktopTests(unittest.TestCase):
         for name, content in release.inventory(ROOT).items():
             suffix = Path(name).suffix.lower()
             with self.subTest(name=name):
-                if suffix == '.ps1': self.assertTrue(content.startswith(b'\xef\xbb\xbf'))
+                if suffix == '.ps1':
+                    self.assertTrue(content.startswith(b'\xef\xbb\xbf'))
+                    # PowerShell treats curly quotes as quote characters, so one inside a string ends it.
+                    self.assertFalse(set(content.decode('utf-8-sig')) & set('“”‘’'))
                 if suffix in ('.ps1', '.cmd', '.vbs'): self.assertEqual(content.count(b'\n'), content.count(b'\r\n'))
                 if suffix == '.sh': self.assertNotIn(b'\r', content)
 
@@ -176,18 +181,59 @@ $value = & ([scriptblock]::Create($env:TEST_CALL))
         marker = self.project / '.runtime' / 'setup.json'
         call = "Invoke-FirstRunSetup '" + sys.executable + "'"
         declined = self.launcher_dialogs(call, 'No')
-        self.assertEqual(len(declined['dialogs']), 1)
-        self.assertIn('Codex → ' + str(self.home / '.codex' / 'skills'), declined['dialogs'][0])
-        self.assertIn('Claude Code：协作技能指向另一个目录 ' + str(self.base / 'private board'), declined['dialogs'][0])
-        self.assertEqual(json.loads(marker.read_text(encoding='utf-8-sig'))['skills'], 'declined')
+        self.assertEqual(len(declined['dialogs']), 2)
+        self.assertIn('是否在桌面创建 agentstalk 图标', declined['dialogs'][0])
+        self.assertIn('Codex → ' + str(self.home / '.codex' / 'skills'), declined['dialogs'][1])
+        self.assertIn('Claude Code：协作技能指向另一个目录 ' + str(self.base / 'private board'), declined['dialogs'][1])
+        state = json.loads(marker.read_text(encoding='utf-8-sig'))
+        self.assertEqual((state['shortcut'], state['skills']), ('declined', 'declined'))
         self.assertFalse((self.home / '.codex' / 'skills').exists())
+        self.assertFalse((self.desktop / 'agentstalk.lnk').exists())
         # Asked once per folder: with the marker in place nothing is shown again.
         self.assertEqual(self.launcher_dialogs(call, 'Yes')['dialogs'], [])
         marker.unlink()
         accepted = self.launcher_dialogs(call, 'Yes')
+        self.assertEqual(accepted['dialogs'][1], '已在桌面创建 agentstalk 图标。')
         self.assertEqual(accepted['dialogs'][-1], '已安装：Codex')
+        self.assertEqual(read_link(self.desktop / 'agentstalk.lnk')['arguments'], '"' + str(self.project / 'scripts' / 'launch.vbs') + '"')
         self.assertTrue((self.home / '.codex' / 'skills' / 'agents-talk' / 'location.md').is_file())
         self.assertEqual((legacy / 'location.md').read_text(encoding='utf-8').count('private board'), 1)
+        # Nothing left to install: the hint names the Python in use, which may be the portable package's.
+        marker.unlink()
+        note = self.launcher_dialogs(call, 'Yes')['dialogs']
+        self.assertEqual(len(note), 1)
+        python = '& "' + sys.executable + '"' if ' ' in sys.executable else sys.executable
+        self.assertIn(python + r' scripts\install_skills.py --clients <客户端> --replace-project --apply', note[0])
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows launcher dialogs')
+    def test_windows_icon_question_after_upgrade_with_existing_or_foreign_icons(self):
+        marker = self.project / '.runtime' / 'setup.json'
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        call = "Invoke-FirstRunSetup '" + sys.executable + "'"
+        make_icon = lambda folder: subprocess.run(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                                                   str(folder / 'scripts' / 'desktop.ps1')], env=self.env, capture_output=True, timeout=60, check=True)
+        # A folder set up by 0.2.0 answered the skill question but was never asked about the icon.
+        marker.write_text('{"skills": "declined"}', encoding='utf-8')
+        first = self.launcher_dialogs(call, 'No')
+        self.assertEqual(len(first['dialogs']), 1)
+        self.assertIn('是否在桌面创建 agentstalk 图标', first['dialogs'][0])
+        state = json.loads(marker.read_text(encoding='utf-8-sig'))
+        self.assertEqual((state['shortcut'], state['skills']), ('declined', 'declined'))
+        self.assertEqual(self.launcher_dialogs(call, 'Yes')['dialogs'], [])
+        # An icon that already opens this folder needs no question.
+        make_icon(self.project)
+        marker.write_text('{"skills": "declined"}', encoding='utf-8')
+        self.assertEqual(self.launcher_dialogs(call, 'Yes')['dialogs'], [])
+        self.assertEqual(json.loads(marker.read_text(encoding='utf-8-sig'))['shortcut'], 'present')
+        # An icon that opens another copy is explained and only replaced after a yes.
+        other = self.base / 'other copy'
+        shutil.copytree(self.project / 'scripts', other / 'scripts')
+        make_icon(other)
+        marker.write_text('{"skills": "declined"}', encoding='utf-8')
+        kept = self.launcher_dialogs(call, 'No')
+        self.assertIn('另一个目录', kept['dialogs'][0])
+        self.assertIn(str(other), kept['dialogs'][0])
+        self.assertIn(str(other), read_link(self.desktop / 'agentstalk.lnk')['arguments'])
 
     @unittest.skipUnless(os.name == 'nt', 'Windows launcher dialogs')
     def test_windows_missing_python_is_explained_and_nothing_is_installed_on_cancel(self):
@@ -208,7 +254,10 @@ $value = & ([scriptblock]::Create($env:TEST_CALL))
             self.assertEqual(syntax.returncode, 0, syntax.stderr)
         run = lambda *args: subprocess.run(['sh', (self.project / 'scripts/desktop.sh').as_posix(), *args], env=self.env,
                                            capture_output=True, timeout=60)
+        status = lambda: run('--status').stdout.decode('utf-8').strip()
+        self.assertEqual(status(), 'missing')
         created = run()
+        self.assertEqual(status(), 'ours')
         output = created.stdout.decode('utf-8')
         self.assertEqual(created.returncode, 0, output + created.stderr.decode('utf-8', 'replace'))
         launcher = next(line.split('：', 1)[1] for line in output.splitlines() if line.startswith('已创建桌面启动器'))
@@ -219,6 +268,7 @@ $value = & ([scriptblock]::Create($env:TEST_CALL))
             self.assertIn('/scripts/agentstalk.png', text)
         removed = run('--remove')
         self.assertIn('已删除', removed.stdout.decode('utf-8'))
+        self.assertEqual(status(), 'missing')
         exists = subprocess.run(['sh', '-c', 'test -e "$1"', 'sh', launcher])
         self.assertNotEqual(exists.returncode, 0)
 
@@ -238,6 +288,7 @@ $value = & ([scriptblock]::Create($env:TEST_CALL))
         out = self.installer('--clients', 'codex', 'claude', 'zcode', '--setup', stdin='').stdout
         self.assertIn('未安装', out)
         self.assertIn('--replace-project', out)
+        self.assertIn(sys.executable, out)
         self.assertFalse((self.home / '.codex' / 'skills').exists())
 
         failed = self.installer('--clients', 'claude', '--apply', expected=2)

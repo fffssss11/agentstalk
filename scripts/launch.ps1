@@ -52,9 +52,46 @@ function Get-Python {
 }
 
 function Invoke-FirstRunSetup([string]$PythonPath) {
-    # Asked once per folder. Skills that belong to another folder are reported, never replaced.
+    # Each question is asked once per folder; answers are kept in .runtime/setup.json. A question
+    # added later (the desktop icon) is still asked once after an upgrade.
+    if (-not $interactive) { return }
     $marker = Join-Path $runtimePath 'setup.json'
-    if (-not $interactive -or (Test-Path -LiteralPath $marker)) { return }
+    $state = [ordered]@{}
+    if (Test-Path -LiteralPath $marker) {
+        try { (Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $state[$_.Name] = $_.Value } } catch { }
+    }
+    $asked = $false
+    if (-not $state.Contains('shortcut')) {
+        try { $state['shortcut'] = Request-DesktopShortcut } catch { $state['shortcut'] = 'failed'; $_ | Out-String | Set-Content -LiteralPath (Join-Path $runtimePath 'setup-error.log') -Encoding UTF8 }
+        $asked = $true
+    }
+    if (-not $state.Contains('skills')) {
+        try { $state['skills'] = Request-SkillInstall $PythonPath } catch { $state['skills'] = 'failed'; $_ | Out-String | Set-Content -LiteralPath (Join-Path $runtimePath 'setup-error.log') -Encoding UTF8 }
+        $asked = $true
+    }
+    if (-not $asked) { return }
+    $state['checked'] = (Get-Date).ToString('s')
+    $state | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding UTF8
+}
+
+function Request-DesktopShortcut {
+    # An icon that already opens this folder needs no question; one that opens another copy is only replaced on yes.
+    $desktopScript = Join-Path $PSScriptRoot 'desktop.ps1'
+    $current = & $desktopScript -Status
+    if ($current.State -eq 'ours') { return 'present' }
+    $text = if ($current.State -eq 'other') {
+        "桌面上已有 agentstalk 图标，但它打开的是另一个目录：`n$($current.Folder)`n`n是否改为打开本目录？原图标会先备份。"
+    } else {
+        "是否在桌面创建 agentstalk 图标？`n`n以后双击桌面图标就能打开控制面板，不必再进入项目目录。也可以随时双击项目里的「创建桌面图标.cmd」。"
+    }
+    if ((Show-Message $text 'YesNo' 'Question') -ne 'Yes') { return 'declined' }
+    & $desktopScript | Out-Null
+    Show-Message '已在桌面创建 agentstalk 图标。' | Out-Null
+    return 'created'
+}
+
+function Request-SkillInstall([string]$PythonPath) {
+    # Skills that belong to another folder are reported, never replaced.
     $installer = Join-Path $PSScriptRoot 'install_skills.py'
     $report = Invoke-Native $PythonPath @($installer, '--clients', 'codex', 'claude', 'zcode', 'reasonix', '--status') -StdoutOnly | ConvertFrom-Json
     $names = @{ codex = 'Codex'; claude = 'Claude Code'; zcode = 'ZCode'; reasonix = 'Reasonix' }
@@ -83,9 +120,11 @@ function Invoke-FirstRunSetup([string]$PythonPath) {
             }
         } else { $outcome = 'declined' }
     } elseif ($notes.Count) {
-        Show-Message ("首次运行检查：`n`n" + ($notes -join "`n") + "`n`n如需改用本目录，请运行：`npython scripts\install_skills.py --clients <客户端> --replace-project --apply") | Out-Null
+        # The Python in use, which may be the portable package's; a bare `python` may not exist.
+        $python = if ($PythonPath -match '\s') { '& "' + $PythonPath + '"' } else { $PythonPath }
+        Show-Message ("首次运行检查：`n`n" + ($notes -join "`n") + "`n`n如需改用本目录，请在本目录打开 PowerShell 运行：`n$python scripts\install_skills.py --clients <客户端> --replace-project --apply") | Out-Null
     }
-    @{ skills = $outcome; clients = $ready; checked = (Get-Date).ToString('s') } | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding UTF8
+    return $outcome
 }
 
 function Get-StartupProblem([string]$PythonPath) {

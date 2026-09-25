@@ -40,6 +40,7 @@ def inspect_artifact(path):
     path = Path(path)
     findings = []
     data = path.read_bytes()
+    bundled_runtime = False
     if path.suffix.lower() in ('.zip', '.pptx'):
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             seen = set()
@@ -55,6 +56,12 @@ def inspect_artifact(path):
                     if issues: findings.append({'part': name, 'issues': sorted(set(issues))})
                     continue
                 suffix = PurePosixPath(name).suffix.lower()
+                # The Windows package's python.org runtime is pinned byte-for-byte by its published SHA-256;
+                # its third-party license texts name their authors, so only its paths are checked here.
+                if '/runtime/python/' in '/' + name:
+                    bundled_runtime = True
+                    if issues: findings.append({'part': name, 'issues': sorted(set(issues))})
+                    continue
                 if suffix in ('.xml', '.rels', '.md', '.py', '.js', '.cjs', '.json', '.ps1', '.txt', '.yml', '.yaml', '.html', '.css', '.svg', '.cmd', '.vbs', '.sh') or PurePosixPath(name).name.upper() in ('LICENSE', 'NOTICE', 'VERSION', 'COPYING', '.GITIGNORE', '.GITATTRIBUTES'):
                     # ZipInfo preserves each entry when duplicate names are present.
                     text = archive.read(member).decode('utf-8-sig')
@@ -81,6 +88,8 @@ def inspect_artifact(path):
     result = {'file': path.name, 'findings': findings, 'ok': not findings}
     if path.suffix.lower() == '.pdf':
         result['scope'] = 'Exposed PDF syntax only. Encoded metadata and streams require a dedicated parser and visual review.'
+    if bundled_runtime:
+        result['runtime'] = 'Files under runtime/python are the unchanged python.org runtime; only their paths were checked.'
     return result
 
 

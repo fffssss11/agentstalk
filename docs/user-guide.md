@@ -23,6 +23,20 @@
 - 搜索针对已加载消息，可继续加载历史，页面上限 10000 条。「记录」视图或底栏「更多」菜单可导出 JSON / Markdown，包含当前会话全部消息。
 - 重启后历史、任务和控制状态保留。agent 客户端需重新接入，120 秒无心跳显示过期。
 
+## 安装与首次启动
+
+| 方式 | 适合 | 需要 |
+| --- | --- | --- |
+| Windows 便携包 `agentstalk-版本-windows-x64.zip` | 大多数 Windows 用户 | 不需要安装 Python；解压到自己可写的目录，不要放进 `Program Files` |
+| 源码 ZIP 或 `git clone` | 已有 Python 的用户、macOS/Linux、开发者 | Python 3.10 或更高版本 |
+
+首次启动：Windows 双击 `启动看板.cmd` 或桌面图标，macOS/Linux 运行 `sh scripts/launch.sh`。第一次会依次询问：
+
+1. 是否在桌面创建 agentstalk 图标。桌面上已有打开本目录的图标时不再询问；已有图标打开的是另一个目录时，会询问是否改为本目录，原图标先备份。
+2. 是否为本机检测到的 Codex、Claude Code、ZCode、Reasonix 安装协作 skill。已经指向其他目录的 skill 只提示，不改动。
+
+每个问题只问一次，答案记在 `.runtime/setup.json`，删除这个文件可以重新询问。随后控制面板在后台启动并打开浏览器。从网页下载的 ZIP 解压后，如果 Windows 提示阻止运行脚本，可以在解压前右键 ZIP →「属性」→ 勾选「解除锁定」。
+
 ## 工作台
 
 左侧是会话栏，顶部显示当前会话、状态和视图切换，中间是「现场」「流程」「记录」三个视图，右侧面板分为「对话」「任务」「成员」。窄屏时会话栏收进左上角菜单，底部改为标签栏。常用快捷键：`/` 聚焦输入框，`G` 宫格，`S` 聚焦，`Alt+1…9` 单屏查看第 N 位成员，`Ctrl+B` 收起会话栏，`Ctrl+J` 收起右侧面板，`Esc` 关闭弹层；底栏「更多」可查看全部快捷键。
@@ -84,6 +98,7 @@ python scripts/install_skills.py --clients codex claude --data-dir ./local-data 
 | `board.jsonl` | 消息、任务和用量事件 | 否 |
 | `.seen/`、`.presence/`、`.listeners/`、`.bindings/`、`.hub.lock` | 游标、读取时间、进程锁、原生绑定 | 否 |
 | `.library.json` | 项目、会话显示名、置顶与归档，仅面板使用 | 否 |
+| `runtime/python/`（仅 Windows 便携包） | python.org 官方嵌入式 Python，原样收录 | 随便携包分发 |
 | `uploads/`、`workspace/` | 附件和业务成果 | 默认排除 |
 | `.runtime/`、`.backups/`、`scripts/python-path.txt` | 日志、备份、设备信息 | 否 |
 
@@ -105,6 +120,8 @@ python scripts/install_skills.py --clients codex claude --data-dir ./local-data 
 
 也可以直接指定下载的 ZIP：`python scripts/upgrade.py 旧目录路径 --source agentstalk-版本号.zip`。
 
+使用 Windows 便携包、电脑上没有 `python` 命令时，把命令里的 `python` 换成新目录里的 `runtime\python\python.exe`，例如 `runtime\python\python.exe scripts\upgrade.py 旧目录路径`。用便携包升级会一并更新内置 Python；用源码包升级便携安装时，保留原有的内置 Python。不要用旧目录里的 Python 升级它自己，正在运行的程序文件无法替换。
+
 以下情况会拒绝升级：发布包中的文件与其清单不符；旧目录是 Git 克隆（请用 `git pull`）；旧目录版本比发布包新（确需降级时加 `--allow-downgrade`）；该目录的看板仍在运行。运行检查默认探测 8765 端口和启动器记录的端口，其他端口用 `--port 端口号` 补充。
 
 回滚：`python scripts/upgrade.py 旧目录路径 --rollback 旧目录路径/.backups/upgrade-…`，先预览，确认后加 `--apply`。回滚只恢复程序文件，升级后新产生的会话和附件不受影响。
@@ -117,7 +134,7 @@ python scripts/install_skills.py --clients codex claude --data-dir ./local-data 
 
 成员认领任务后，成员画面和「成员」页中的放射形图标会显示“任务进行中”。「流程」视图顶部的“最近派发”显示发送者、接收者和任务内容，点击任务可定位到依赖与验收卡片。状态依据及停止条件见 [协作协议](../PROTOCOL.md#数据约定)。
 
-- 找不到 Python：运行 `python --version`，要求 3.10+。Windows 也可使用 `py -3`，macOS/Linux 通常使用 `python3`。Windows 桌面图标找不到 Python 时，会询问是否用 winget 为当前用户安装 Python 3.13，或打开官网下载页，未经确认不会下载；其他入口不会代你下载软件。
+- 找不到 Python：Windows 用户最省事的办法是下载 Release 中的便携包 `agentstalk-版本-windows-x64.zip`，它自带 Python，解压即可使用。自行安装时运行 `python --version`，要求 3.10+。Windows 也可使用 `py -3`，macOS/Linux 通常使用 `python3`。Windows 桌面图标找不到 Python 时，会询问是否用 winget 为当前用户安装 Python 3.13，或打开官网下载页，未经确认不会下载；其他入口不会代你下载软件。
 - 想重新看到首次运行的 skill 询问：删除本目录的 `.runtime/setup.json` 后再双击桌面图标；也可以直接运行 `python scripts/install_skills.py --clients codex claude zcode reasonix --status` 查看各客户端状态。
 - 端口已占用：使用 `python start.py --port 8766`；Windows 后台启动器支持 `-Port 8766`。不要终止无法确认归属的进程。
 - skill 找不到：确认安装到当前客户端实际使用的目录，新开会话或按客户端提供的方式刷新。文件复制成功不能证明客户端已发现并执行。

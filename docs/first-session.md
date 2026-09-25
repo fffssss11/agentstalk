@@ -6,14 +6,21 @@
 
 ## 1. 打开面板
 
-安装 Python 3.10+，解压源码后，在源码目录打开终端：
+Windows 用户下载 Release 中的便携包 `agentstalk-版本-windows-x64.zip`（自带 Python，0.3.0 起提供）或源码，解压到自己可写的目录后双击 `启动看板.cmd`。第一次启动会依次询问：
+
+1. 是否在桌面创建 agentstalk 图标。选「是」之后，以后双击桌面图标即可打开面板。
+2. 是否为检测到的客户端安装协作 skill。本示例需要它；也可以选「否」，在第 3 步手动安装。
+
+两个问题各只问一次，答案记在 `.runtime/setup.json`；删除这个文件会重新询问。
+
+macOS/Linux 运行 `sh scripts/launch.sh`，在终端里回答同样的问题。也可以在任何系统上安装 Python 3.10+，在源码目录打开终端运行：
 
 ```sh
 python hub.py doctor
 python start.py
 ```
 
-macOS/Linux 可使用 `python3`。浏览器访问 [本地面板](http://127.0.0.1:8765/)。运行期间保留终端；前台按 Ctrl+C 停止。也可以按首页说明创建 agentstalk 桌面图标，双击即可检查环境并启动。
+macOS/Linux 可使用 `python3`。浏览器访问 [本地面板](http://127.0.0.1:8765/)。前台启动时保留终端，按 Ctrl+C 停止。
 
 ## 2. 选择两个或三个窗口
 
@@ -23,7 +30,7 @@ macOS/Linux 可使用 `python3`。浏览器访问 [本地面板](http://127.0.0.
 
 ## 3. 安装并逐个接入
 
-以下示例仅安装 Codex 的两个 skill，先看预览，再写入：
+第一次启动时已经安装 skill 的，可以跳过下面的命令。手动安装时，以下示例仅安装 Codex 的两个 skill，先看预览，再写入：
 
 ```sh
 python scripts/install_skills.py --clients codex

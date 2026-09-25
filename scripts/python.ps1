@@ -8,6 +8,9 @@
         $resolved = Test-AgentsTalkPython $candidate
         if ($resolved) { return $resolved }
     }
+    # The Windows portable package ships the official embeddable Python next to the sources.
+    $bundled = Test-AgentsTalkPython (Join-Path (Split-Path -Parent $PSScriptRoot) 'runtime\python\python.exe')
+    if ($bundled) { return $bundled }
     $candidates = @()
     foreach ($name in @('python.exe', 'python3.exe')) {
         $command = Get-Command $name -ErrorAction SilentlyContinue

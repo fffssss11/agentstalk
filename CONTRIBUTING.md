@@ -14,9 +14,9 @@ npm test
 
 Linux CI 安装浏览器及系统依赖使用 `npx playwright install --with-deps chromium`。`npm test` 先验证测试服务隔离，再依次运行 browser、flow、instances、activity、workspace 五套浏览器测试，分别使用 18765、18766、18767、18771、18772；单独运行可用 `npm run test:flow` 等。workspace 测试用画布模拟窗口共享，不捕获真实屏幕，也不需要系统授权。启动检查只访问健康接口并核对新进程 PID，端口被其他服务占用会失败，不应复用其他服务。用 `AGENTS_TALK_PYTHON` 指定 Python 可执行文件，用 `AGENTS_TALK_BROWSER` 指定已有 Chromium 系浏览器；默认使用 Playwright 下载的 Chromium。不要设置变量指向真实会话数据。浏览器下载受网络限制时可用环境变量指定本机已安装的浏览器，不要关闭 TLS 验证。
 
-公开 README 截图用 `node tests/preview.cjs` 重新生成，只展示独立空白会话，额外使用 18768 端口。
+公开 README 截图用 `node tests/preview.cjs` 重新生成，额外使用 18768 端口，数据目录是临时目录。它先拍下新用户看到的空白面板（`dashboard.png`），再建立一个演示会话：模拟成员通过 CLI 报到、派发、交付和验收，成员画面是标有「演示画面」的画布，不捕获真实屏幕，也不调用模型；用量明确标为演示数据。生成的 `docs/assets/screenshot-*.png` 提交前要逐张检查，不能出现真实路径、账号或对话。
 
-所有测试使用临时状态目录与 `config.example.json`。截图写入 `.runtime/`，只包含隔离测试数据。发布验证另检查解压后的干净副本，不允许测试依赖开发者已有 `config.json`、`python-path.txt` 或安装的全局 skill。
+所有测试使用临时状态目录与 `config.example.json`。桌面图标测试通过 `AGENTS_TALK_DESKTOP` 写入临时目录，不碰开发者的真实桌面；便携包测试用替身运行时，不联网下载 Python。截图写入 `.runtime/`，只包含隔离测试数据。发布验证另检查解压后的干净副本，不允许测试依赖开发者已有 `config.json`、`python-path.txt` 或安装的全局 skill。
 
 ## 代码地图
 
@@ -31,6 +31,7 @@ Linux CI 安装浏览器及系统依赖使用 `npx playwright install --with-dep
 | `创建桌面图标.cmd`、`scripts/desktop.ps1`、`scripts/launch.ps1` | Windows 桌面图标与双击启动：检查或经确认安装 Python、首次运行询问 skill、后台启动面板 |
 | `scripts/desktop.sh`、`scripts/launch.sh` | macOS/Linux 桌面启动器，在终端窗口中完成同样的检查 |
 | `scripts/make_icons.py` | 按面板图标生成 `agentstalk.ico` 与 `agentstalk.png`，`--check` 核对可复现 |
+| `scripts/portable.py` | Windows 便携包：发布源码加固定版本、按 SHA-256 校验的 python.org 嵌入式 Python |
 | `scripts/install_skills.py` | 可预览的 skill 安装、备份、归属清单及保守卸载 |
 | `scripts/project_tools.py` | 只读环境诊断 |
 | `scripts/build_release.py` | 精确清单打包和发布前静态检查 |

@@ -40,6 +40,7 @@ class UpgradeTests(unittest.TestCase):
         self.version = release.build(source, self.archive)['version']
         with zipfile.ZipFile(self.archive) as z: z.extractall(self.base / 'extracted')
         self.package = self.base / 'extracted' / (release.ARCHIVE_NAME + '-' + self.version)
+        self.source = source
         # An older installation: different program files plus private data that must survive.
         self.old = self.base / 'old install 空格'
         (self.old / 'VERSION').write_text('0.0.1\n', encoding='utf-8')
@@ -113,6 +114,23 @@ class UpgradeTests(unittest.TestCase):
         (self.old / '.git').mkdir()
         self.assertIn('git pull', self.upgrade(expected=2).stderr)
         (self.old / '.git').rmdir()
+
+    def test_portable_packages_bring_their_python_and_source_packages_keep_it(self):
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import portable
+        from test_portable import stand_in_runtime
+        bundle = self.base / 'portable.zip'
+        portable.build(self.source, bundle, stand_in_runtime())
+        with zipfile.ZipFile(bundle) as z: z.extractall(self.base / 'portable')
+        package = self.base / 'portable' / f'{release.ARCHIVE_NAME}-{self.version}-{portable.PLATFORM}'
+        self.run_cli(package / 'scripts/upgrade.py', self.old, '--apply')
+        runtime = self.old / 'runtime' / 'python' / 'python.exe'
+        self.assertEqual(runtime.read_bytes(), b'MZ stand-in interpreter')
+        # Going back to the plain source package must not delete the bundled interpreter.
+        out = self.upgrade('--apply').stdout
+        self.assertNotIn('runtime/python', out)
+        self.assertEqual(runtime.read_bytes(), b'MZ stand-in interpreter')
+        for name, content in self.private.items(): self.assertEqual((self.old / name).read_bytes(), content, name)
 
     def test_refuses_while_the_board_from_that_folder_runs(self):
         with socket.socket() as s:

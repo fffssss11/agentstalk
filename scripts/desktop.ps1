@@ -1,10 +1,13 @@
 ﻿param(
     [string]$Name = 'agentstalk',
-    [string]$Desktop = [Environment]::GetFolderPath('Desktop'),
-    [switch]$Remove
+    # AGENTS_TALK_DESKTOP lets tests and unusual setups point at another folder than the user's desktop.
+    [string]$Desktop = $(if ($env:AGENTS_TALK_DESKTOP) { $env:AGENTS_TALK_DESKTOP } else { [Environment]::GetFolderPath('Desktop') }),
+    [switch]$Remove,
+    [switch]$Status
 )
 # Creates or removes the desktop icon that starts this folder's panel. No Python is needed here:
 # the launcher checks Python, offers first-run setup and then opens the panel.
+# -Status only reports whether the icon is missing, opens this folder ("ours") or another one.
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $launcher = Join-Path $PSScriptRoot 'launch.vbs'
@@ -69,6 +72,13 @@ function Read-Shortcut([string]$Path) {
     if ($native) { $parts = [AgentsTalk.ShellLink]::Read($Path); return @{ Arguments = $parts[0]; Folder = $parts[1] } }
     $link = (New-Object -ComObject WScript.Shell).CreateShortcut($Path)
     return @{ Arguments = $link.Arguments; Folder = $link.WorkingDirectory }
+}
+
+if ($Status) {
+    if (-not (Test-Path -LiteralPath $shortcutPath)) { return [pscustomobject]@{ State = 'missing'; Folder = $null } }
+    $existing = Read-Shortcut $shortcutPath
+    $state = if ($existing.Arguments -eq $arguments) { 'ours' } else { 'other' }
+    return [pscustomobject]@{ State = $state; Folder = $existing.Folder }
 }
 
 if (Test-Path -LiteralPath $shortcutPath) {

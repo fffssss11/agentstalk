@@ -136,12 +136,19 @@ def upgrade(args, target):
             path = inside(target, name)
             if not path.exists(): added.append(name)
             elif path.read_bytes() != content: replaced.append(name)
+        # A source package never removes the Python that a Windows portable installation brought along.
+        keep_runtime = not any(name.startswith('runtime/') for name in files)
         retired = []
         for name in sorted(old_names - set(files)):
+            if keep_runtime and name.startswith('runtime/'): continue
             try:
                 if inside(target, safe_name(name)).is_file(): retired.append(name)
             except ValueError:
                 continue
+        # Windows locks a running python.exe and its DLLs, so the runtime being replaced cannot run this script.
+        if Path(sys.executable).resolve().is_relative_to(target) and any(n.startswith('runtime/') for n in replaced + retired):
+            raise ValueError("Run the upgrade with the new package's Python (runtime\\python\\python.exe in the new folder), "
+                             'not with the Python inside the folder being upgraded')
         say(f'Agents Talk {old} → {new} in {target}')
         if old == new: say('  Same version: files that differ from the release are restored (local edits are backed up).')
         if not (target / RECORD).is_file(): say('  This folder was not installed from a release ZIP; replaced files may contain your own edits.')

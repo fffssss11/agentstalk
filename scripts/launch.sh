@@ -21,9 +21,16 @@ if [ -z "$python" ]; then
   wait_key '按回车键关闭…'
   exit 1
 fi
-if [ ! -f .runtime/setup.json ]; then
-  "$python" scripts/install_skills.py --clients codex claude zcode reasonix --setup
-  mkdir -p .runtime && printf '{"skills": "asked"}\n' > .runtime/setup.json
+# First-run questions are asked once each; one added later (the launcher) is still asked after an upgrade.
+setup=.runtime/setup.json
+if ! grep -qs '"shortcut"' "$setup" && [ -t 0 ] && [ "$(sh scripts/desktop.sh --status 2>/dev/null)" != ours ]; then
+  printf '是否在桌面创建 agentstalk 启动器？以后双击它就能打开控制面板。[y/N] '
+  read -r answer || answer=
+  case $answer in [yY]*) sh scripts/desktop.sh ;; esac
 fi
+if ! grep -qs '"skills"' "$setup"; then
+  "$python" scripts/install_skills.py --clients codex claude zcode reasonix --setup
+fi
+mkdir -p .runtime && printf '{"skills": "asked", "shortcut": "asked"}\n' > "$setup"
 echo 'agentstalk 控制面板正在启动；关闭此窗口或按 Ctrl+C 即停止。'
 "$python" start.py || wait_key '控制面板已退出，按回车键关闭…'

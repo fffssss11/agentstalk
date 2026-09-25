@@ -468,6 +468,7 @@ input:focus-visible,textarea:focus-visible{border-color:var(--accent);box-shadow
 .code-block pre{margin:0;padding:10px;overflow:auto;font:0.84rem/1.55 var(--mono);color:var(--text)}
 .pinned-area{position:sticky;top:0;z-index:2;background:var(--surface);padding-bottom:2px}
 .pinned-area:empty{display:none}
+.pinned-area::after{content:'';position:absolute;left:0;right:0;bottom:-12px;height:12px;background:linear-gradient(var(--surface),transparent);pointer-events:none}
 .pinned{margin:10px 12px 2px;padding:10px 12px;border-radius:12px;background:var(--warn-soft);border:1px solid var(--warn-line)}
 .pinned-head{display:flex;align-items:center;gap:6px;font-size:.84rem;font-weight:600;color:var(--warn)}
 .pinned p{margin:4px 0 8px;font-size:.92rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

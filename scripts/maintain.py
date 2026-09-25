@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import audit_public  # noqa: E402
 import build_release  # noqa: E402
+import portable  # noqa: E402
 
 # New files in these folders must be released or kept out of them; private runtime names are exempt.
 SOURCE_DIRS = ('web', 'scripts', 'tests', 'skills', 'prompts', 'docs', '.github')
@@ -236,16 +237,21 @@ def absolute_links(text, ref, root=ROOT):
     return re.sub(r'\]\((?!https?://|mailto:|#)([^)\s]+)\)', lambda m: f']({base}/blob/{ref}/{m.group(1)})', text)
 
 
-def release_notes(ver, root=ROOT):
+def release_notes(ver, root=ROOT, portable_package=False):
+    footer = NOTES_FOOTER
+    if portable_package:
+        footer = (f'**Windows 便携包**：`{build_release.ARCHIVE_NAME}-{ver}-{portable.PLATFORM}.zip` 自带 python.org 官方嵌入式 '
+                  f'Python {portable.PYTHON_VERSION}，解压到可写目录后双击 `启动看板.cmd` 即可使用，不需要另外安装 Python。'
+                  '源码包适合已经安装 Python 3.10+ 的用户和开发者。\n\n' + NOTES_FOOTER)
     body = changelog_body(ver, root)
     if body:
         if ver != 'Unreleased' and changelog_body('Unreleased', root):
             print(f'warning: CHANGELOG "Unreleased" still has entries that are not part of {ver}; run "bump" to release them',
                   file=sys.stderr)
-        return absolute_links(f'{body}\n\n{NOTES_FOOTER}\n', 'main' if ver == 'Unreleased' else 'v' + ver, root)
+        return absolute_links(f'{body}\n\n{footer}\n', 'main' if ver == 'Unreleased' else 'v' + ver, root)
     body = changelog_body('Unreleased', root)
     if not body: raise ValueError(f'CHANGELOG.md has no entries for {ver} or "Unreleased"')
-    return absolute_links(f'> 开发构建：`{ver}` 尚未在 CHANGELOG 中定版，以下为未发布内容。\n\n{body}\n\n{NOTES_FOOTER}\n', 'main', root)
+    return absolute_links(f'> 开发构建：`{ver}` 尚未在 CHANGELOG 中定版，以下为未发布内容。\n\n{body}\n\n{footer}\n', 'main', root)
 
 
 def cmd_notes(args):
@@ -262,13 +268,18 @@ def write_sums(directory):
 def cmd_build(args):
     ver = version()
     out = Path(args.output_dir).resolve() if args.output_dir else ROOT / 'dist' / f'release-{ver}'
-    notes = release_notes(ver)
+    notes = release_notes(ver, portable_package=args.portable)
     result = build_release.build(ROOT, out / f'{build_release.ARCHIVE_NAME}-{ver}.zip')
+    say(f'Built {result["archive"]} ({result["bytes"]} bytes, {len(result["files"])} source files)')
+    archives = [result['archive']]
+    if args.portable:
+        bundle = portable.build(ROOT, out / f'{build_release.ARCHIVE_NAME}-{ver}-{portable.PLATFORM}.zip', portable.runtime_archive())
+        say(f'Built {bundle["archive"]} ({bundle["bytes"]} bytes, python.org Python {portable.PYTHON_VERSION} included)')
+        archives.append(bundle['archive'])
     (out / 'RELEASE-NOTES.md').write_text(notes, encoding='utf-8', newline='\n')
     files = write_sums(out)
-    say(f'Built {result["archive"]} ({result["bytes"]} bytes, {len(result["files"])} source files)')
     say(f'SHA256SUMS.txt covers {", ".join(p.name for p in files)}; release body: RELEASE-NOTES.md')
-    say(f'Next: python scripts/maintain.py verify "{result["archive"]}"')
+    for archive in archives: say(f'Next: python scripts/maintain.py verify "{archive}"')
 
 
 def cmd_sums(args):
@@ -312,14 +323,32 @@ def cmd_verify(args):
         for f in data['files']:
             if sha256(project / f['path']) != f['sha256']: raise SystemExit('Hash mismatch: ' + f['path'])
         say(f'{len(listed)} files match SOURCE-MANIFEST.json; privacy scan clean')
+        runtime = data.get('runtime')
+        python = sys.executable
+        if runtime:
+            official = portable.CACHE / runtime['source'].rsplit('/', 1)[1]
+            if official.is_file() and sha256(official) == runtime['sha256']:
+                bundled = {p: (project / p).read_bytes() for p in listed if p.startswith(portable.RUNTIME_DIR + '/')}
+                if bundled != portable.runtime_files(official.read_bytes()):
+                    raise SystemExit('The bundled runtime differs from the python.org archive it names')
+                say(f'Bundled runtime matches python.org Python {runtime["python"]} byte for byte')
+            else:
+                say('python.org archive not in the cache: bundled runtime checked against SOURCE-MANIFEST.json only')
+            # On Windows the package is started exactly as users start it, with its own Python.
+            if os.name == 'nt': python = str(project / portable.RUNTIME_DIR / 'python.exe')
         env = {k: v for k, v in os.environ.items() if not k.startswith('AGENTS_TALK_')}
         env.update(PYTHONUTF8='1', PYTHONDONTWRITEBYTECODE='1', AGENTS_TALK_DATA=str(temp / 'runtime'),
                    AGENTS_TALK_CONFIG=str(project / 'config.example.json'))
-        doctor = subprocess.run([sys.executable, 'hub.py', 'doctor'], cwd=project, env=env, capture_output=True, encoding='utf-8')
+        doctor = subprocess.run([python, 'hub.py', 'doctor'], cwd=project, env=env, capture_output=True, encoding='utf-8')
         if doctor.returncode: raise SystemExit('doctor failed in the clean copy:\n' + doctor.stdout + doctor.stderr)
+        if python != sys.executable:
+            status = subprocess.run([python, 'scripts/install_skills.py', '--clients', 'codex', '--status'], cwd=project, env=env,
+                                    capture_output=True, encoding='utf-8')
+            if status.returncode: raise SystemExit('The bundled Python cannot run the skill installer:\n' + status.stderr)
+            say(f'Bundled Python runs doctor and the skill installer ({runtime["python"]})')
         port = free_port()
         base = f'http://127.0.0.1:{port}'
-        child = subprocess.Popen([sys.executable, 'hub.py', 'serve', '--port', str(port), '--no-open'], cwd=project, env=env,
+        child = subprocess.Popen([python, 'hub.py', 'serve', '--port', str(port), '--no-open'], cwd=project, env=env,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             for _ in range(150):
@@ -339,10 +368,11 @@ def cmd_verify(args):
             for asset in assets: fetch(f'{base}/{asset}')
             state = json.loads(fetch(base + '/api/state'))
             if state['total'] or state['tasks']: raise SystemExit('A fresh copy must start with an empty board')
-            say(f'Clean copy serves the panel, {len(assets)} assets and an empty board')
+            say(f'Clean copy serves the panel, {len(assets)} assets and an empty board' + (' with the bundled Python' if python != sys.executable else ''))
         finally:
             child.terminate()
             child.wait(timeout=10)
+        # The tests are development tools (they create venvs and call sh), so they use the maintainer's Python.
         if args.tests: run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests'], cwd=project, env=env)
     say('Archive verified.')
 
@@ -387,7 +417,7 @@ def cmd_sync(args):
         return
     say('Staged only. Review "git diff --cached", then commit, tag and push yourself:')
     say(f'  git -C "{repo}" commit -m "Release {version()}"')
-    say(f'  git -C "{repo}" tag {tag}')
+    say(f'  git -C "{repo}" tag -a {tag} -m "Agents Talk {version()}"')
     say(f'  git -C "{repo}" push origin HEAD {tag}')
 
 
@@ -412,6 +442,8 @@ def main():
     p.set_defaults(func=cmd_notes)
     p = sub.add_parser('build', help='Build the source ZIP, RELEASE-NOTES.md and SHA256SUMS.txt')
     p.add_argument('--output-dir', help='Defaults to dist/release-VERSION')
+    p.add_argument('--portable', action='store_true',
+                   help='Also build the Windows package with the pinned python.org runtime (downloaded once into .runtime/cache)')
     p.set_defaults(func=cmd_build)
     p = sub.add_parser('sums', help='Rewrite SHA256SUMS.txt after adding assets to a release folder')
     p.add_argument('directory')

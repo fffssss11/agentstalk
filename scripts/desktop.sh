@@ -1,6 +1,6 @@
 #!/bin/sh
 # Create (or with --remove, delete) the agentstalk desktop launcher on macOS or Linux.
-# Usage: sh scripts/desktop.sh [--remove]
+# Usage: sh scripts/desktop.sh [--remove | --status]
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 case $root in
@@ -13,6 +13,14 @@ else
   desktop=$(xdg-user-dir DESKTOP 2>/dev/null || true)
   [ -n "$desktop" ] || desktop=$HOME/Desktop
   launcher=$desktop/agentstalk.desktop
+fi
+if [ "${1:-}" = --status ]; then
+  # missing / ours (opens this folder) / other (opens another copy); nothing is written.
+  if [ ! -f "$launcher" ]; then echo missing
+  elif grep -qF "$root/scripts/launch.sh" "$launcher"; then echo ours
+  else echo other
+  fi
+  exit 0
 fi
 if [ "${1:-}" = --remove ]; then
   if [ -f "$launcher" ] && grep -qF "$root/scripts/launch.sh" "$launcher"; then

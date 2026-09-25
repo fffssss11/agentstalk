@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       sha256: ${{ steps.build.outputs.sha256 }}
+      portable: ${{ steps.build.outputs.portable }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,20 +35,44 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: python scripts/maintain.py check --browser
       - id: build
-        name: Build and verify a clean copy
+        name: Build and verify clean copies
         run: |
           VERSION=$(cat VERSION)
-          python scripts/maintain.py build --output-dir release-assets
+          python scripts/maintain.py build --portable --output-dir release-assets
           python scripts/maintain.py verify "release-assets/agentstalk-$VERSION.zip"
+          python scripts/maintain.py verify "release-assets/agentstalk-$VERSION-windows-x64.zip"
           echo "sha256=$(sha256sum "release-assets/agentstalk-$VERSION.zip" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "portable=$(sha256sum "release-assets/agentstalk-$VERSION-windows-x64.zip" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: release-browser-diagnostics
           path: .runtime/*qa.png
           retention-days: 7
-  publish:
+  windows:
+    # The portable package is started with its own Python on a real Windows machine before release.
     needs: verify
+    timeout-minutes: 15
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Rebuild on Windows and run the bundled Python
+        shell: bash
+        env:
+          EXPECTED: ${{ needs.verify.outputs.portable }}
+        run: |
+          VERSION=$(cat VERSION)
+          python scripts/maintain.py build --portable --output-dir release-assets
+          ACTUAL=$(sha256sum "release-assets/agentstalk-$VERSION-windows-x64.zip" | cut -d' ' -f1)
+          test "$ACTUAL" = "$EXPECTED" || { echo "::error::The Windows build of the portable package differs from the verified one"; exit 1; }
+          python scripts/maintain.py verify "release-assets/agentstalk-$VERSION-windows-x64.zip"
+  publish:
+    needs: [verify, windows]
     timeout-minutes: 10
     runs-on: ubuntu-latest
     permissions:
@@ -60,14 +85,17 @@ jobs:
         with:
           python-version: '3.13'
       # Builds are byte-reproducible, so this job never runs tests or npm with a write token.
-      - name: Rebuild the verified archive
+      - name: Rebuild the verified archives
         env:
           EXPECTED: ${{ needs.verify.outputs.sha256 }}
+          EXPECTED_PORTABLE: ${{ needs.verify.outputs.portable }}
         run: |
           VERSION=$(cat VERSION)
-          python scripts/maintain.py build --output-dir release-assets
+          python scripts/maintain.py build --portable --output-dir release-assets
           ACTUAL=$(sha256sum "release-assets/agentstalk-$VERSION.zip" | cut -d' ' -f1)
-          test "$ACTUAL" = "$EXPECTED" || { echo "::error::Rebuilt archive differs from the verified one"; exit 1; }
+          test "$ACTUAL" = "$EXPECTED" || { echo "::error::Rebuilt source archive differs from the verified one"; exit 1; }
+          ACTUAL=$(sha256sum "release-assets/agentstalk-$VERSION-windows-x64.zip" | cut -d' ' -f1)
+          test "$ACTUAL" = "$EXPECTED_PORTABLE" || { echo "::error::Rebuilt portable package differs from the verified one"; exit 1; }
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,4 +106,5 @@ jobs:
           FLAGS=(--draft --verify-tag --title "Agents Talk $VERSION" --notes-file release-assets/RELEASE-NOTES.md)
           if [[ "$VERSION" == *-* ]]; then FLAGS+=(--prerelease); fi
           gh release create "$TAG" "release-assets/agentstalk-$VERSION.zip" "release-assets/agentstalk-$VERSION.zip.sha256" \
+            "release-assets/agentstalk-$VERSION-windows-x64.zip" "release-assets/agentstalk-$VERSION-windows-x64.zip.sha256" \
             release-assets/SHA256SUMS.txt "${FLAGS[@]}"
