@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -56,7 +57,12 @@ class MaintainTests(unittest.TestCase):
     def test_bump_updates_versions_links_and_changelog(self):
         self.assertIn('must be later', self.maintain('bump', '0.0.1', expected=2).stderr)
         self.assertIn('must be later', self.maintain('bump', self.version, expected=2).stderr)
+        # Right after a release "Unreleased" is empty; give this copy something to release.
+        log = self.project / 'CHANGELOG.md'
+        log.write_text(log.read_text(encoding='utf-8').replace('## Unreleased\n', '## Unreleased\n\n- 待发布的测试条目。\n', 1),
+                       encoding='utf-8', newline='\n')
         before = {n: (self.project / n).read_bytes() for n in ('VERSION', 'README.md', 'CHANGELOG.md')}
+        media = re.findall(r'releases/download/[^/]+/Agents-Talk-[^)\s]+', before['README.md'].decode('utf-8'))
         self.assertIn('Preview only', self.maintain('bump', '99.0.0').stdout)
         self.assertEqual({n: (self.project / n).read_bytes() for n in before}, before)
         unreleased = self.maintain('notes', 'Unreleased').stdout.split('---')[0].strip()
@@ -69,8 +75,8 @@ class MaintainTests(unittest.TestCase):
         readme = (self.project / 'README.md').read_text(encoding='utf-8')
         self.assertIn('`99.0.0`', readme)
         self.assertIn('releases/download/v99.0.0/agentstalk-99.0.0.zip', readme)
-        if f'download/v{self.version}/Agents-Talk-Promo' in before['README.md'].decode('utf-8'):
-            self.assertIn(f'download/v{self.version}/Agents-Talk-Promo', readme)
+        # Video and slides stay linked to the release that hosts them.
+        for link in media: self.assertIn(link, readme)
         self.assertIn('## Unreleased\n\n## 99.0.0\n', (self.project / 'CHANGELOG.md').read_text(encoding='utf-8'))
         self.assertIn(unreleased, self.maintain('notes').stdout)
         self.assertIn('docs/release.md does not name', self.maintain('status', '--strict', expected=2).stdout)
@@ -83,7 +89,12 @@ class MaintainTests(unittest.TestCase):
         sums = (out_dir / 'SHA256SUMS.txt').read_text(encoding='utf-8').splitlines()
         self.assertEqual(sums, [f'{hashlib.sha256((out_dir / n).read_bytes()).hexdigest()}  {n}'
                                 for n in sorted([archive.name, archive.name + '.sha256'])])
-        self.assertIn('SOURCE-MANIFEST.json', (out_dir / 'RELEASE-NOTES.md').read_text(encoding='utf-8'))
+        notes = (out_dir / 'RELEASE-NOTES.md').read_text(encoding='utf-8')
+        self.assertIn('SOURCE-MANIFEST.json', notes)
+        # Release pages resolve relative links under /releases/; notes must link to the tagged source.
+        repo = json.loads((self.project / 'package.json').read_text(encoding='utf-8'))['repository']['url'].removesuffix('.git')
+        self.assertNotIn('](docs/', notes)
+        self.assertIn(f'{repo}/blob/v{self.version}/docs/release.md', notes)
         self.assertIn('Archive verified', self.maintain('verify', archive).stdout)
         self.assertIn('overwrite', self.maintain('build', '--output-dir', out_dir, expected=2).stderr)
 

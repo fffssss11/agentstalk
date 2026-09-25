@@ -33,8 +33,8 @@ ROOT_SUFFIXES = {'.py', '.md', '.json', '.cmd', '.ps1', '.txt'}
 SKIP_PARTS = {'__pycache__', 'node_modules', '.git'}
 VERSIONED_DOCS = ('README.md', 'README.en.md', 'docs/release.md')
 NOTES_FOOTER = ('---\n\n源码包内 `SOURCE-MANIFEST.json` 记录每个源码文件的 SHA-256，`SHA256SUMS.txt` 覆盖本页附件。'
-                '校验值只证明文件一致，不代表作者签名。已有目录的升级、备份与回滚见 docs/user-guide.md，'
-                '实际验证范围与已知限制见 docs/release.md。')
+                '校验值只证明文件一致，不代表作者签名。已有目录的升级、备份与回滚见 [使用说明](docs/user-guide.md#停止备份和升级)，'
+                '实际验证范围与已知限制见 [发布说明](docs/release.md)。')
 
 
 def say(text=''):
@@ -228,16 +228,24 @@ def cmd_bump(args):
     say('Updated. Next: edit docs/release.md, then python scripts/maintain.py check --browser')
 
 
+def absolute_links(text, ref, root=ROOT):
+    """A release page resolves relative links under /releases/, so point them at the source of that ref."""
+    url = json.loads(read_text(root, 'package.json')).get('repository', {}).get('url', '')
+    base = url.removesuffix('.git').rstrip('/')
+    if not base.startswith('https://github.com/'): return text
+    return re.sub(r'\]\((?!https?://|mailto:|#)([^)\s]+)\)', lambda m: f']({base}/blob/{ref}/{m.group(1)})', text)
+
+
 def release_notes(ver, root=ROOT):
     body = changelog_body(ver, root)
     if body:
         if ver != 'Unreleased' and changelog_body('Unreleased', root):
             print(f'warning: CHANGELOG "Unreleased" still has entries that are not part of {ver}; run "bump" to release them',
                   file=sys.stderr)
-        return f'{body}\n\n{NOTES_FOOTER}\n'
+        return absolute_links(f'{body}\n\n{NOTES_FOOTER}\n', 'main' if ver == 'Unreleased' else 'v' + ver, root)
     body = changelog_body('Unreleased', root)
     if not body: raise ValueError(f'CHANGELOG.md has no entries for {ver} or "Unreleased"')
-    return f'> 开发构建：`{ver}` 尚未在 CHANGELOG 中定版，以下为未发布内容。\n\n{body}\n\n{NOTES_FOOTER}\n'
+    return absolute_links(f'> 开发构建：`{ver}` 尚未在 CHANGELOG 中定版，以下为未发布内容。\n\n{body}\n\n{NOTES_FOOTER}\n', 'main', root)
 
 
 def cmd_notes(args):

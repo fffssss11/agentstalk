@@ -14,9 +14,9 @@ The board does not call model APIs, require API keys, select real models, open n
 
 [![54-second promotional video with isolated demonstration data](docs/assets/promo-poster.png)](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Promo-1080p60.mp4)
 
-[Download source ZIP](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/agents-talk-0.1.0-rc.3.zip) · [Release assets](https://github.com/fffssss11/agentstalk/releases/tag/v0.1.0-rc.3)
+[Download source ZIP](https://github.com/fffssss11/agentstalk/releases/download/v0.2.0/agentstalk-0.2.0.zip) · [Release assets](https://github.com/fffssss11/agentstalk/releases/tag/v0.2.0)
 
-The video uses isolated demo screenshots with no real model calls, an AI-generated conceptual background and an original synthesized soundtrack.
+The video and slides were made for 0.1.0-rc.3 and show the interface before the 0.2.0 redesign. They use isolated demo screenshots with no real model calls, an AI-generated conceptual background and an original synthesized soundtrack.
 
 ## Run
 
@@ -73,7 +73,7 @@ Windows optionally provides `scripts/install.ps1` for skills plus the desktop ic
 
 Listen address is restricted to loopback. Do not expose the service through a proxy or tunnel. This is a trusted local-workstation tool, not a multi-user authentication boundary. See [SECURITY.md](SECURITY.md).
 
-Version `0.1.0-rc.3` is a public pre-release under the [MIT License](LICENSE). See [release notes](docs/release.md) for actual verification status and remaining limitations.
+Version `0.2.0` is the first stable release under the [MIT License](LICENSE). See [release notes](docs/release.md) for actual verification status and remaining limitations.
 
 Never publish your working directory as an archive. `scripts/build_release.py` uses an exact source allowlist and excludes private data; it also checks common credential and personal-path patterns. Review the archive manually before publication. `scripts/maintain.py` wraps status, release gates, version bumps, reproducible builds, clean-copy verification and syncing a public clone; pushing a `v*` tag makes GitHub Actions prepare a draft release. See the [maintenance guide (Chinese)](docs/maintenance.md).
 

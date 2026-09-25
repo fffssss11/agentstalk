@@ -6,15 +6,15 @@
 
 Agents Talk 通过共享事件记录和 skill 协议连接 Codex、Claude Code、Reasonix、ZCode 的独立会话。各 agent 就在你自己的电脑上实际运行，面板像视频会议一样实时显示它们的窗口，并支持同客户端多实例、人工干预、任务依赖、独立验收、整合工作树和按实例统计用量。
 
-当前版本：`0.1.0-rc.3`，采用 [MIT 许可证](LICENSE)，处于公开预发布阶段。实际验证范围与已知限制见 [发布说明](docs/release.md)。
+当前版本：`0.2.0`，采用 [MIT 许可证](LICENSE)，是首个正式版。实际验证范围与已知限制见 [发布说明](docs/release.md)。
 
 [发布附件](https://github.com/fffssss11/agentstalk/releases) · [问题反馈](https://github.com/fffssss11/agentstalk/issues) · [参与开发](CONTRIBUTING.md)
 
 [![54 秒功能短片，使用隔离演示数据](docs/assets/promo-poster.png)](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Promo-1080p60.mp4)
 
-[下载源码 ZIP](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/agents-talk-0.1.0-rc.3.zip) · [观看宣传视频](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Promo-1080p60.mp4) · [6 页介绍 PPT](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Quick-Overview.pptx)
+[下载源码 ZIP](https://github.com/fffssss11/agentstalk/releases/download/v0.2.0/agentstalk-0.2.0.zip) · [观看宣传视频](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Promo-1080p60.mp4) · [6 页介绍 PPT](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Quick-Overview.pptx)
 
-视频使用实际界面的隔离演示数据，未调用真实模型。概念背景由 AI 生成。
+宣传视频与介绍 PPT 制作于 0.1.0-rc.3，展示的是重构前的界面；使用隔离演示数据，未调用真实模型，概念背景由 AI 生成。
 
 ## 它能做什么
 
