@@ -72,11 +72,14 @@ class MaintainTests(unittest.TestCase):
         self.assertEqual(json.loads((self.project / 'package.json').read_text(encoding='utf-8'))['version'], '99.0.0')
         lock = json.loads((self.project / 'package-lock.json').read_text(encoding='utf-8'))
         self.assertEqual((lock['version'], lock['packages']['']['version']), ('99.0.0', '99.0.0'))
-        readme = (self.project / 'README.md').read_text(encoding='utf-8')
-        self.assertIn('`99.0.0`', readme)
-        self.assertIn('releases/download/v99.0.0/agentstalk-99.0.0.zip', readme)
+        for name in ('README.md', 'README.en.md'):
+            readme = (self.project / name).read_text(encoding='utf-8')
+            self.assertIn('`99.0.0`', readme)
+            # Both the link text and the address name the new archive.
+            self.assertIn('[agentstalk-99.0.0.zip](https://github.com/fffssss11/agentstalk/releases/download/v99.0.0/agentstalk-99.0.0.zip)', readme)
+            self.assertNotIn(f'{release.ARCHIVE_NAME}-{self.version}.zip', readme)
         # Video and slides stay linked to the release that hosts them.
-        for link in media: self.assertIn(link, readme)
+        for link in media: self.assertIn(link, (self.project / 'README.md').read_text(encoding='utf-8'))
         self.assertIn('## Unreleased\n\n## 99.0.0\n', (self.project / 'CHANGELOG.md').read_text(encoding='utf-8'))
         self.assertIn(unreleased, self.maintain('notes').stdout)
         self.assertIn('docs/release.md does not name', self.maintain('status', '--strict', expected=2).stdout)

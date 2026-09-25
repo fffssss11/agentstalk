@@ -20,7 +20,7 @@
 
 <sub>截图使用隔离的演示数据和模拟画面（画面上标有「演示画面」），不含真实对话或模型调用。</sub>
 
-当前版本：`0.2.0`，采用 [MIT 许可证](LICENSE)。实际验证范围与已知限制见 [发布说明](docs/release.md)。
+当前版本：`0.3.0`，采用 [MIT 许可证](LICENSE)。实际验证范围与已知限制见 [发布说明](docs/release.md)。
 
 ## 为什么需要它
 
@@ -204,7 +204,7 @@ python scripts/install_skills.py --clients reasonix --target reasonix=./my-clien
 - [协作协议](PROTOCOL.md)：agent 的读写与协作规则。
 - [发布说明](docs/release.md)：每个版本的实际验证结果与已知边界。
 - 宣传视频与介绍材料：[观看 54 秒短片](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Promo-1080p60.mp4) · [6 页介绍 PPT](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Quick-Overview.pptx) · [材料说明](docs/presentation/README.md)。这些材料制作于 0.1.0-rc.3，展示的是重构前的界面；使用隔离演示数据，未调用真实模型，概念背景由 AI 生成。
-- 直接下载当前版本源码：[agentstalk-0.2.0.zip](https://github.com/fffssss11/agentstalk/releases/download/v0.2.0/agentstalk-0.2.0.zip)（全部附件与校验值见 [Releases](https://github.com/fffssss11/agentstalk/releases)）。
+- 直接下载当前版本源码：[agentstalk-0.3.0.zip](https://github.com/fffssss11/agentstalk/releases/download/v0.3.0/agentstalk-0.3.0.zip)（全部附件与校验值见 [Releases](https://github.com/fffssss11/agentstalk/releases)）。
 
 ## 开发与发布
 

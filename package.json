@@ -1,6 +1,6 @@
 {
   "name": "agentstalk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Local multi-agent collaboration board. Node is only needed for browser development tests.",
   "license": "MIT",

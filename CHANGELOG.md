@@ -2,12 +2,17 @@
 
 ## Unreleased
 
+## 0.3.0
+
+Windows 用户不必再另外安装 Python：新增自带 python.org 官方 Python 的便携包，第一次启动时询问是否创建桌面图标，README 与英文版全面重写。
+
 - 新增 Windows 便携包 `agentstalk-版本-windows-x64.zip`：自带 python.org 官方嵌入式 Python 3.13（版本与 SHA-256 固定，文件原样收录），解压后双击 `启动看板.cmd` 即可使用，不需要安装 Python；agent 的 skill 命令也使用包内 Python。发布工作流会在真实 Windows 机器上重建并启动便携包，核对字节与 Linux 构建一致后才上传。
 - 第一次启动时询问是否在桌面创建 agentstalk 图标：已有打开本目录的图标时不询问，图标打开的是另一个副本时询问是否改为本目录；从 0.2.0 升级的目录也会被问一次。macOS/Linux 首次运行 `sh scripts/launch.sh` 时同样询问。
 - 升级：便携包会一并更新内置 Python，源码包升级保留已有的内置 Python，并拒绝用正在被替换的内置 Python 运行升级。
 - `hub.py doctor` 在隔离模式的 Python 下也能找到 `scripts/`；发布说明提到便携包的下载与用法。
 - 首次运行提示中的 skill 安装命令写出实际使用的 Python，便携包用户电脑上没有 `python` 命令也能照着运行。
 - README 与英文版重写：功能一览、三分钟上手、工作原理图、支持的客户端、系统要求与常见问题；界面截图改为隔离演示数据生成的协作现场、流程、深色主题与窄屏画面。
+- `maintain.py bump` 同时更新 README 中源码包下载链接的文字，之前只更新链接地址。
 - 源码包的 `.sha256` 校验文件在所有平台都使用 LF 换行，Windows 本机构建与 CI 构建的 `SHA256SUMS.txt` 保持一致；已发布的 0.2.0 附件由 CI 构建，不受影响。
 
 ## 0.2.0

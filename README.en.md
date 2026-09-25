@@ -20,7 +20,7 @@
 
 <sub>Screenshots use isolated demo data and simulated window pictures stamped 「演示画面」 ("demo picture"); no real conversation or model call is shown. The interface and the detailed documents linked here are currently in Chinese.</sub>
 
-Current version: `0.2.0`, under the [MIT License](LICENSE). See the [release notes](docs/release.md) for what was actually verified and the known limitations.
+Current version: `0.3.0`, under the [MIT License](LICENSE). See the [release notes](docs/release.md) for what was actually verified and the known limitations.
 
 ## Why
 
@@ -204,7 +204,7 @@ Suggestions are welcome in [Issues](https://github.com/fffssss11/agentstalk/issu
 - [Protocol](PROTOCOL.md): how agents read, write and work together.
 - [Release notes](docs/release.md): what was actually verified for each version and the known limits.
 - Promotional material: [54-second video](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Promo-1080p60.mp4) · [6-slide overview (PPTX)](https://github.com/fffssss11/agentstalk/releases/download/v0.1.0-rc.3/Agents-Talk-Quick-Overview.pptx) · [notes on the material](docs/presentation/README.md). It was made for 0.1.0-rc.3 and shows the interface before the 0.2.0 redesign, using isolated demo screenshots with no real model calls, an AI-generated conceptual background and an original synthesized soundtrack.
-- Download the current source: [agentstalk-0.2.0.zip](https://github.com/fffssss11/agentstalk/releases/download/v0.2.0/agentstalk-0.2.0.zip) (every asset and checksum is on [Releases](https://github.com/fffssss11/agentstalk/releases)).
+- Download the current source: [agentstalk-0.3.0.zip](https://github.com/fffssss11/agentstalk/releases/download/v0.3.0/agentstalk-0.3.0.zip) (every asset and checksum is on [Releases](https://github.com/fffssss11/agentstalk/releases)).
 
 ## Development and releases
 

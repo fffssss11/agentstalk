@@ -209,6 +209,7 @@ def bump_plan(new, root=ROOT):
         text = read_text(root, name)
         for prefix in (build_release.ARCHIVE_NAME, 'agents-talk'):
             text = text.replace(f'releases/download/v{old}/{prefix}-{old}.zip', f'releases/download/v{new}/{build_release.ARCHIVE_NAME}-{new}.zip')
+            text = text.replace(f'[{prefix}-{old}.zip]', f'[{build_release.ARCHIVE_NAME}-{new}.zip]')
         changes[name] = (text.replace(f'`{old}`', f'`{new}`')
                          .replace(f'releases/tag/v{old}', f'releases/tag/v{new}'))
     changes['CHANGELOG.md'] = read_text(root, 'CHANGELOG.md').replace('## Unreleased', f'## Unreleased\n\n## {new}', 1)
